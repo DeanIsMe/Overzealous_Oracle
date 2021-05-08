@@ -21,4 +21,3 @@ def LogSeries(inSeq):
     """Convert some input data to a normalised log series in the log2 domain"""
     return NormaliseEachSeq(np.log2(inSeq))
 
-    

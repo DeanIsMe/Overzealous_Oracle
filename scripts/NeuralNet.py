@@ -129,9 +129,9 @@ class ValidationCb(keras.callbacks.Callback):
 # To allow pickling:
 # https://stackoverflow.com/questions/44855603/typeerror-cant-pickle-thread-lock-objects-in-seq2seq
 import tensorflow as tf
-setattr(tf.contrib.rnn.GRUCell, '__deepcopy__', lambda self, _: self)
-setattr(tf.contrib.rnn.BasicLSTMCell, '__deepcopy__', lambda self, _: self)
-setattr(tf.contrib.rnn.MultiRNNCell, '__deepcopy__', lambda self, _: self)
+setattr(tf.compat.v1.nn.rnn_cell.GRUCell, '__deepcopy__', lambda self, _: self)
+setattr(tf.compat.v1.nn.rnn_cell.BasicLSTMCell, '__deepcopy__', lambda self, _: self)
+setattr(tf.compat.v1.nn.rnn_cell.MultiRNNCell, '__deepcopy__', lambda self, _: self)
 
 
 #==========================================================================

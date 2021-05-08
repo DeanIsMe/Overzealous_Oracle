@@ -83,7 +83,7 @@ if 0:
 else:
     # !@#$
 #    filehandler = open('dfs_5coins_40days_2018-02-17.pickle', 'rb')
-    filehandler = open('dfs_10coins_180days_2018_04_20.pickle', 'rb')
+    filehandler = open('indata/dfs_10coins_180days_2018_04_20.pickle', 'rb')
     dfs = pickle.load(filehandler)
     filehandler.close()
     

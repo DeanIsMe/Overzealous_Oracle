@@ -239,7 +239,7 @@ class CWRNNCell(Layer):
                 s = i*unitsPerMod
                 e = (i+1)*unitsPerMod
                 hModule = h_tm1[:,s:e]
-                h_mod.append(tf.cond(K.equal(K.tf.mod(time_step[0][0], period), 0), if_true, if_false))
+                h_mod.append(tf.cond(pred=K.equal(K.tf.mod(time_step[0][0], period), 0), true_fn=if_true, false_fn=if_false))
             hidden = K.concatenate(h_mod)
 
         else:

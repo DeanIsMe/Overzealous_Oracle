@@ -28,10 +28,10 @@ def NHardTanh(x,
     """
     threshold = 1.001
 
-    def noise_func() :return tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
-    def zero_func (): return tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
+    def noise_func() :return tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    def zero_func (): return tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
 
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
 
     res = HardTanh(x + c * noise)
     return res
@@ -49,10 +49,10 @@ def NHardSigmoid(x,
         c: float, standard deviation of the noise
     """
 
-    def noise_func() :return tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
-    def zero_func (): return tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
+    def noise_func() :return tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    def zero_func (): return tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
 
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
 
     res = HardSigmoid(x + c * noise)
     return res
@@ -70,9 +70,9 @@ def NHardTanhSat(x,
         c: float, standard deviation of the noise
     """
     threshold = 1.001
-    def noise_func() :return tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
-    def zero_func (): return tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    def noise_func() :return tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    def zero_func (): return tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
 
 
     test = tf.cast(tf.greater(tf.abs(x) , threshold), tf.float32)
@@ -92,9 +92,9 @@ def NHardSigmoidSat(x,
         c: float, standard deviation of the noise
     """
     threshold = 1.001
-    def noise_func() :return tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
-    def zero_func (): return tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    def noise_func() :return tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    def zero_func (): return tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
 
 
     test = tf.cast(tf.greater(tf.abs(x) , threshold), tf.float32)
@@ -125,10 +125,10 @@ def NTanh(x,
     scale = c * (tf.sigmoid(delta**2) - 0.5)**2
     if alpha > 1.0 and  half_normal:
            scale *= -1.0
-    zeros=tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
-    def noise_func() :return tf.abs(tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32))
+    zeros=tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
+    def noise_func() :return tf.abs(tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32))
     def zero_func (): return zeros+ 0.797  if half_normal else zeros
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
 
     eps = scale * noise + alpha * delta
     z = x - signs * eps
@@ -161,10 +161,10 @@ def NSigmoid(x,
 
     if alpha > 1.0 and  half_normal:
            scale *= -1.0
-    zeros=tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
-    def noise_func() :return tf.abs(tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32))
+    zeros=tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
+    def noise_func() :return tf.abs(tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32))
     def zero_func (): return zeros+ 0.797  if half_normal   else zeros
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
 
 
     eps = scale * noise + alpha * delta
@@ -201,7 +201,7 @@ def NTanhP(x,
 
 
     if not noise:
-        noise = tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
+        noise = tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
 
     signs = tf.sign(x)
     delta = HardTanh(x) - x
@@ -211,11 +211,11 @@ def NTanhP(x,
            scale *= -1.0
 
 
-    zeros=tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
-    rn_noise=tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    zeros=tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
+    rn_noise=tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
     def noise_func() :return tf.abs(rn_noise) if half_normal   else zeros
     def zero_func (): return zeros+ 0.797  if half_normal   else zeros
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
 
     res = alpha * HardTanh(x) + (1. - alpha) * x - signs * scale * noise
 
@@ -250,17 +250,17 @@ def NSigmoidP(x,
     signs = tf.sign(x)
     scale = c * (tf.sigmoid(p * delta) - 0.5)**2
     if not noise:
-        noise = tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
+        noise = tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
 
     if alpha > 1.0 and  half_normal:
            scale *= -1.0
 
 
-    zeros=tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
-    rn_noise=tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    zeros=tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
+    rn_noise=tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
     def noise_func() :return tf.abs(rn_noise) if half_normal   else rn_noise
     def zero_func (): return zeros+ 0.797  if half_normal   else zeros
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
     res = (alpha * HardSigmoid(x) + (1. - alpha) * lin_sigm - signs * scale * noise)
 
     return res
@@ -288,17 +288,17 @@ def NSigmoidPInp(x,
     signs = tf.sign(x)
     delta = HardSigmoid(x) - (0.25 * x + 0.5)
     signs = tf.sign(x)
-    noise = tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    noise = tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
 
 
     if half_normal and alpha > 1.0:
           c *= -1.0
 
-    zeros=tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
-    rn_noise=tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    zeros=tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
+    rn_noise=tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
     def noise_func() :return tf.abs(rn_noise) if half_normal   else rn_noise
     def zero_func (): return zeros+ 0.797  if half_normal  else zeros
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
     scale = c * tf.nn.softplus(p * abs(delta) / (abs(noise) + 1e-10))
     res = HardSigmoid(x + scale * noise)
 
@@ -327,17 +327,17 @@ def NTanhPInp(x,
     signs = tf.sign(x)
     delta = HardTanh(x) - x
     signs =  tf.sign(x)
-    noise = tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    noise = tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
 
     noise_det = 0.
     if half_normal and  alpha > 1.0:
           c *= -1
 
-    zeros=tf.zeros(tf.shape(x), dtype=tf.float32, name=None)
-    rn_noise=tf.random_normal(tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
+    zeros=tf.zeros(tf.shape(input=x), dtype=tf.float32, name=None)
+    rn_noise=tf.random.normal(tf.shape(input=x), mean=0.0, stddev=1.0, dtype=tf.float32)
     def noise_func() :return tf.abs(rn_noise) if half_normal   else rn_noise
     def zero_func (): return zeros+ 0.797  if half_normal  else zeros
-    noise=tf.cond(tf.cast(use_noise, tf.bool),noise_func,zero_func)
+    noise=tf.cond(pred=tf.cast(use_noise, tf.bool),true_fn=noise_func,false_fn=zero_func)
 
     scale = c * tf.nn.softplus(p * abs(delta) / (abs(noise) + 1e-10))
     res = HardTanh(x + scale * noise)
