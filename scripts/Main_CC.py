@@ -5,12 +5,15 @@ Created on Dec 17  2017
 @author: Dean
 """
 
+#%% 
 # Set the seed for repeatable results (careful with this use)
 #print('FIXING SEED FOR REPEATABLE RESULTS')
 #from numpy.random import seed
 #seed(5)
 #from tensorflow import set_random_seed
 #set_random_seed(3)
+
+%matplotlib widget
 
 import numpy as np
 import keras
@@ -28,6 +31,7 @@ import matplotlib.pyplot as plt
 import time
 import Crypto_GetData as cgd
 import pickle
+from datetime import datetime
 
 from keras import regularizers
 
@@ -67,26 +71,29 @@ r.config = GetConfig()
 #Shape should be (Stocks, Timesteps, Features
 #Columns should be ['close', 'high', 'low', 'volumeto']
 
-r.coinList = ['ETH','BTC','BCH','XRP','LTC','XLM','NEO','EOS','XEM', 'IOT']
+#r.coinList = ['ETH','BTC','BCH','XRP','LTC','XLM','NEO','EOS','XEM', 'IOT','DOGE','ADA','POT','VET','XLM','ETC']
 #r.coinList = ['ETH','BTC','BCH','XRP','LTC']
-#r.coinList = ['ETH', 'BTC', 'BCH']
+r.coinList = ['ETH', 'ETC']
 #r.coinList = ['ETH']
 
+# %% Get Data
 
 if 0:
     numHours = 24*180
-    dfs = cgd.GetHourlyDf(r.coinList, numHours) # a list of data frames, with data already conditioned
+    dfs = cgd.GetHourlyDf(r.coinList, numHours) # a list of data frames
     # To save a data set:
-#    filehandler = open('dfs_10coins_180days_2018_xx_xx.pickle', 'wb')
-#    pickle.dump(dfs, filehandler)
-#    filehandler.close()
+    date_str = datetime.now().strftime('%Y-%m-%d')
+    filehandler = open(f'../indata/dfs_{len(dfs)}coins_{numHours}hours_{date_str}.pickle', 'wb')
+    pickle.dump(dfs, filehandler)
+    filehandler.close()
 else:
     # !@#$
 #    filehandler = open('dfs_5coins_40days_2018-02-17.pickle', 'rb')
-    filehandler = open('indata/dfs_10coins_180days_2018_04_20.pickle', 'rb')
+    filehandler = open('../indata/dfs_2coins_4320hours_2021-05-09.pickle', 'rb')
     dfs = pickle.load(filehandler)
     filehandler.close()
-    
+
+# %% Prep the training data
 r.samples = len(dfs)
 r.timesteps = dfs[0].shape[-2]
 
@@ -107,7 +114,7 @@ r.inFeatures = dfs[0].shape[-1]
 FE.PlotInData(r, dfs, 0, [0, 50])
 
 # Convert to a numpy array
-inData = np.zeros((r.samples, r.timesteps, r.inFeatures));
+inData = np.zeros((r.samples, r.timesteps, r.inFeatures))
 for i, df in enumerate(dfs):
     inData[i] = np.array(df)
 
@@ -123,8 +130,10 @@ for i in np.arange(r.outFeatures):
 # Print out data
 FE.PlotOutData(r, prices, outData, 0)
 
-single = True
 
+
+ # %%
+ single = True
 if single:
 # *****************************************************************************
 # Single Run
@@ -132,9 +141,9 @@ if single:
     r.batchRunName = ''
     
     r.config['earlyStopping'] = 0
-    r.config['neurons'] = [128, 128];
+    r.config['neurons'] = [512, 256, 128]
     r.config['epochs'] = 64
-    r.config['inScale'] = 0.1
+    r.config['inScale'] = 1
     r.config['outScale'] = 1
     r.config['revertToBest'] = True
     
@@ -268,7 +277,7 @@ else:
         for idx1, r in enumerate(rList):
             r = results[idx2][idx1]
             models[idx2][idx1] = r.model
-            r.model = 0;
+            r.model = 0
             r.kerasOpt = 0
     
     filename = r.batchName + '.pickle'
@@ -279,7 +288,7 @@ else:
     # Copy the model back in
     for idx2, rList in enumerate(results):
         for idx1, r in enumerate(rList):
-            results[idx2][idx1].model = models[idx2][idx1];
+            results[idx2][idx1].model = models[idx2][idx1]
     
     #Go to sleep
     import os

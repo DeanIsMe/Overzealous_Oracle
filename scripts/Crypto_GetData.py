@@ -17,6 +17,11 @@ import pandas as pd
 
 # %%
 #==========================================================================
+# Get hourly dataframe
+# Returns a dataframe for each coin. Attempts to download numHours of data
+# for each coin. If that much data isn't available, then it will return
+# what it finds
+# close, high, low, volume
 def GetHourlyDf(coins, numHours):
     """
     Returns a list of dataframes
@@ -163,8 +168,6 @@ def GetHourlyDf(coins, numHours):
                 this_df.pop('time')
                 this_df.pop('quote_volume')
                 this_df.pop('open')
-                this_df.pop('high')
-                this_df.pop('low')
             
                 if df.empty:
                     df = this_df

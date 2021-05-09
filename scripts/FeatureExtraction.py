@@ -18,7 +18,7 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
         tInd = range(tRange[0], tRange[1])
     outDim = output.shape[-1]            
     x = tInd
-    plt.figure(1, figsize=(15,8))
+    plt.figure(1, figsize=(10,10))
     plt.subplot(2,1,1)
     plt.plot(x,prices[sample, tInd])
     plt.title('Price of {}'.format(r.coinList[sample]))
@@ -58,7 +58,7 @@ def CalcFavScores(config, prices):
     The number of periods is defined by the length of config['outputRanges']
     Can use this to output short, medium and long term scores
     """
-    print('CalcFavScores Start');
+    print('CalcFavScores Start')
     # If it's just a single row, add an extra dimension
     if (prices.ndim != 2):
         prices = prices.reshape(1,prices.shape[-1])
@@ -74,11 +74,11 @@ def CalcFavScores(config, prices):
     scoreRanges = config['outputRanges']
     outDim = len(scoreRanges)
         
-    out = np.zeros((list(prices.shape)+[outDim]), dtype=float);
+    out = np.zeros((list(prices.shape)+[outDim]), dtype=float)
     for i, sRange in enumerate(scoreRanges):
-        out[:,:,i] = CalcFavourabilityScore(config, prices, sRange);
+        out[:,:,i] = CalcFavourabilityScore(config, prices, sRange)
 
-    return out;
+    return out
 
     
 
@@ -94,67 +94,67 @@ def TranslateVector(input, translation, padding=0):
     if (padding == -2):
         # Use the closest value as the padding
         if (translation > 0):
-            padding = input[:,0,None];
+            padding = input[:,0,None]
         else:
             padding = input[:,-1,None]
     
-    len = input.shape[-1];
-    output = np.ones(input.shape) * padding;
-    valid = np.zeros(input.shape, dtype=int);
+    len = input.shape[-1]
+    output = np.ones(input.shape) * padding
+    valid = np.zeros(input.shape, dtype=int)
     
-    toCut = min(len, abs(translation));
-    topIdx = len-toCut;
-    botIdx = toCut;
+    toCut = min(len, abs(translation))
+    topIdx = len-toCut
+    botIdx = toCut
     if translation >= 0: # Move to the right
-        output[:,botIdx:] = input[:,:topIdx];
-        valid[:,botIdx:] = 1;
+        output[:,botIdx:] = input[:,:topIdx]
+        valid[:,botIdx:] = 1
     elif translation < 0: # Move to the left
-        output[:,:topIdx] = input[:,botIdx:];
-        valid[:,:topIdx] = 1;
-    return (output, valid);
+        output[:,:topIdx] = input[:,botIdx:]
+        valid[:,:topIdx] = 1
+    return (output, valid)
 
 #==============================================================================
-def CalcFavourabilityScore(config, dailyData, tRange):
+def CalcFavourabilityScore(config, price_Data, tRange):
     """ 
-    dailyData is a numpy array of shape (samples, timesteps)
-    dailyData should have each item corresponding to 1 trading day
+    price_Data is a numpy array of shape (samples, timesteps)
+    price_Data should have each item corresponding to 1 trading day
     It should have no gaps, and should be adjusted for inflation
     It should be linear (not logarithmic)
     """
     
     # Generate the days at which I want to check the future prices
-    numPoints = min(tRange[1]-tRange[0], 80);
-    padding = 0;
+    numPoints = min(tRange[1]-tRange[0], 80)
+    padding = 0
     
-    b = 2; # in y = a*exp(b*x) + c. Affects linearity
-    a = (tRange[1]-1) / (np.exp(b)-1);
-    c = 1-a;
+    b = 2 # in y = a*exp(b*x) + c. Affects linearity
+    a = (tRange[1]-1) / (np.exp(b)-1)
+    c = 1-a
     
-    seedBot = np.log((tRange[0]-c)/a)/b;
-    seeds = np.linspace(seedBot,1,numPoints);
-    checkDays = np.floor(a*np.exp(seeds*b)+c).astype(int);
+    seedBot = np.log((tRange[0]-c)/a)/b
+    seeds = np.linspace(seedBot,1,numPoints)
+    checkDays = np.floor(a*np.exp(seeds*b)+c).astype(int)
     
-    score = np.zeros(dailyData.shape);
-    validity = np.zeros(dailyData.shape);
+    score = np.zeros(price_Data.shape)
+    validity = np.zeros(price_Data.shape)
     
     # Get all of the future prices - positives
     for dayIdx in checkDays:
-        [thisVec,  thisValid] = TranslateVector(dailyData,-dayIdx, padding)
-        score = score + thisVec;
-        validity = validity + thisValid;
+        [thisVec,  thisValid] = TranslateVector(price_Data,-dayIdx, padding)
+        score = score + thisVec
+        validity = validity + thisValid
     
     # Account for all of the subtractions of the current prices
-    score = score - dailyData * validity;
+    score = score - price_Data * validity
     # Normalise
     if config['pullUncertainYTo0']:
-        score = (score / numPoints) / dailyData; 
+        score = (score / numPoints) / price_Data
     else:
-        score = (score / validity) / dailyData;
+        score = (score / validity) / price_Data
         
 
     # There will be data at the end that is NaN/Inf
     # Extend the last valid score out to the end
-    score[:,-tRange[0]:] = score[:,-tRange[0]-1:-tRange[0]];
+    score[:,-tRange[0]:] = score[:,-tRange[0]-1:-tRange[0]]
     
     if config['binarise']:
         # Minimise outliers reduces the size of outliers
@@ -183,7 +183,7 @@ def CalcFavourabilityScore(config, dailyData, tRange):
         score[ind] = (np.tanh((side/median-config['selectivity'])*config['ternarise']) + 1) * median
     
     
-    return score;
+    return score
 
 #==========================================================================
 def Normalise(dfs, cols):
@@ -238,15 +238,15 @@ def CalcVolatility(config, prices):
     
     # Absolute Erraticism Score
     samples = prices.shape[-2]
-    timesteps = prices.shape[-1];
+    timesteps = prices.shape[-1]
     
     # Comparative Erraticism
     # Set up the time periods
-    numPeriods = config['vixNumPastRanges'];
-    maxDaysPast = config['vixMaxPeriodPast'];
-    firstPeriodLen = 5;
+    numPeriods = config['vixNumPastRanges']
+    maxDaysPast = config['vixMaxPeriodPast']
+    firstPeriodLen = 5
     seeds = np.linspace(0,1,numPeriods)
-    b = 3; # in y = a*exp(b*x) + c. Affects linearity. 4 is good. Lower: more linear
+    b = 3 # in y = a*exp(b*x) + c. Affects linearity. 4 is good. Lower: more linear
     a = (maxDaysPast-firstPeriodLen) / (np.exp(b)-1)
     c = firstPeriodLen-a
     periodStartsB4Today = np.round(a*np.exp(seeds*b)+c).astype(int)
@@ -265,8 +265,8 @@ def CalcVolatility(config, prices):
     
     volatility = volatility/validity
     
-    volatility[np.isinf(volatility)] = 0; # If there were no valid points, assume 0 noise.
-    volatility[np.isnan(volatility)] = 0;
+    volatility[np.isinf(volatility)] = 0 # If there were no valid points, assume 0 noise.
+    volatility[np.isnan(volatility)] = 0
     
     return volatility
 
@@ -355,8 +355,8 @@ def ScaleLoadedData(dfs):
     # Functions of data
     for df in dfs:
         # Make high and low relative to the close
-        df.high = (df.high / df.close - 1);
-        df.low = (df.low / df.close - 1);
+        df.high = (df.high / df.close - 1)
+        df.low = (df.low / df.close - 1)
     
     # Normalisation per stock
     for df in dfs:

@@ -1,58 +1,120 @@
 # -*- coding: utf-8 -*-
+# %%
 """
 Created on Fri Jan 19 23:10:38 2018
 
 @author: Dean
 """
 
-from kucoin.client import Client
+# updated on 2021-05-08
+# See kucoin sdk details:
+# https://github.com/Kucoin/kucoin-python-sdk
+
+# client.get_all_tickers() is only returning 10 results! It should be returning
+# everything.
+This script is not updated and will not work. Not worth it with Kucoin's mess
+
+
+from kucoin.client import Market
 import pandas as pd
 import numpy as np
 import itertools
 
-from private_keys import api_key, api_secret
+from private_keys import kucoin_api_key, kucoin_api_secret, kucoin_sandbox_api_key, kucoin_sandbox_api_secret
 
-client = Client(api_key, api_secret)
+api_key = kucoin_sandbox_api_key
+api_secret = kucoin_sandbox_api_secret
 
-markets = ['BTC', 'ETH', 'NEO', 'USDT', 'KCS', 'BCH']
-allData = client.get_trading_symbols()
-df = pd.DataFrame(allData)
-df.rename(columns={'buy': 'bid', 'sell': 'offer'}, inplace=True)
+# REAL server (not sandbox)
+# print('WARNING! USING REAL KUCOIN SERVER')
+#client = Market(url='https://api.kucoin.com')
+# client = Market()
+
+# or connect to Sandbox
+client = Market(url='https://openapi-sandbox.kucoin.com')
+client = Market(is_sandbox=True)
+
+# get symbol kline
+klines = client.get_kline('BTC-USDT','1hour')
+
+# Returns a list of lists with shape (1500,7). Each item:
+#   [
+#       "1545904980",             //Start time of the candle cycle
+#       "0.058",                  //opening price
+#       "0.049",                  //closing price
+#       "0.058",                  //highest price
+#       "0.049",                  //lowest price
+#       "0.018",                  //Transaction amount
+#       "0.000945"                //Transaction volume
+#   ],
+
+#%%
+
+markets = ['BTC', 'ETH', 'NEO', 'USDT', 'KCS', 'BCH'] # Currencies to search between
+allData = client.get_symbol_list()
+symbolList = pd.DataFrame(allData)
+
+# Quote and Base currencies
+# 'baseCurrency' is the currency being bought or sold
+# 'quoteCurrency is the currency used to represent the baseCurrency's value.
+# BASE-QUOTE.  1 BASE = X QUOTE
+# E.g. BTC-USDT = 55000. BTC: base. USDT:quote.  1 BTC = 55000 USDT
+
+
+# Tickers include the offer and bid prices
+ticker_resp = client.get_all_tickers()
+tickers = pd.DataFrame(ticker_resp['ticker'])
+tickers.rename(columns={'buy': 'bid', 'sell': 'offer'}, inplace=True)
+tickers['bid'] = tickers['bid'].astype(float)
+tickers['offer'] = tickers['offer'].astype(float)
+
+tickers['quoteCurrency'] = tickers['symbol'].map(lambda sym : sym.split('-')[0])
+tickers['baseCurrency'] = tickers['symbol'].map(lambda sym : sym.split('-')[1])
+df = tickers
 
 marketData = {}
-allCoins = {}
+quoteFromBaseCur = {} # List of lists. For each base currency, lists the available quote currencies
 for m in markets:
-    marketData[m] = df.loc[df['coinTypePair'] == m]
-    allCoins[m] = list(marketData[m]['coinType'])
+    marketData[m] = df.loc[df['baseCurrency'] == m]
+    quoteFromBaseCur[m] = list(marketData[m]['quoteCurrency'])
 
+
+
+# %%
 
 for pair in itertools.combinations(markets, r=2):   
-    c1 = pair[0] # Coin 1
-    c2 = pair[1]
+    c1 = pair[0] # Coin 1. Base currency
+    c2 = pair[1] # Quote currency
     
-    coinList = list(set(allCoins[c1]).intersection(allCoins[c2]))
+    coinList = list(set(quoteFromBaseCur[c1]).intersection(quoteFromBaseCur[c2]))
     if len(coinList) == 0:
         continue
-    df1 = marketData[c1].loc[marketData[c1]['coinType'].isin(coinList)]
-    df2 = marketData[c2].loc[marketData[c2]['coinType'].isin(coinList)]
+    df1 = marketData[c1].loc[marketData[c1]['baseCurrency'].isin(coinList)]
+    df2 = marketData[c2].loc[marketData[c2]['baseCurrency'].isin(coinList)]
     
     
     # Sort both coins so that row orders match up
-    df1 = df1.sort_values('coinType')
-    df2 = df2.sort_values('coinType')
+    df1 = df1.sort_values('baseCurrency')
+    df2 = df2.sort_values('baseCurrency')
     # Make row indices match up
-    df1.index = df1['coinType']
-    df2.index = df2['coinType']
+    df1.index = df1['baseCurrency']
+    df2.index = df2['baseCurrency']
     
     # Determine conversions between c1 and c2
-    dft = df[(df['coinType']==c2) & (df['coinTypePair']==c1)]
-    if dft.size != 0:
-        c2Bid = dft[:1]['bid'] # Highest bid price
-        c2Offer = dft[:1]['offer']
+    pair_symbol = c1 + '-' + c2
+    this_ticker = tickers.loc[tickers['symbol'] == pair_symbol]
+    if this_ticker.size != 0:
+        c2Bid = this_ticker[:1]['bid'] # Highest bid price
+        c2Offer = this_ticker[:1]['offer']
     else:
-        dft = df[(df['coinType']==c1) & (df['coinTypePair']==c2)]
-        c2Bid = 1/dft[:1]['offer']
-        c2Offer = 1/dft[:1]['bid']
+        pair_symbol = c2 + '-' + c1
+        this_ticker = tickers.loc[tickers['symbol'] == pair_symbol]
+        if this_ticker.size == 0:
+            print(f'Ticker between pair {pair_symbol} not found!', file=sys.stderr)
+            continue
+        else:
+            c2Bid = 1./this_ticker[:1]['offer']
+            c2Offer = 1./this_ticker[:1]['bid']
     
     fees = pow(1-0.001, 3)
     # Considering moving c1 -> Coin -> c2 -> c1
@@ -113,8 +175,9 @@ for pair in itertools.combinations(markets, r=2):
         print('{:>5} --> {:>5} for {:>9} {:>5}/{:>5}'.format(c2, coin, df2['offer'][coin],coin,c2))
         print('{:>5} --> {:>5} for {:>9} {:>5}/{:>5}'.format(coin, c1, df1['bid'][coin],coin,c1))
         print('{:>5} --> {:>5} for {:>9} {:>5}/{:>5}'.format(c1,   c2, c2Offer.iloc[0],c2,c1))
+    
 
-
+print('DONE')
 # EXAMPLES FROM LIBRARY
 
 # get currencies
@@ -149,3 +212,4 @@ for pair in itertools.combinations(markets, r=2):
 
 # fetch weekly klines since it listed
 #klines = client.get_historical_klines_tv("NEO-BTC", KLINE_INTERVAL_1WEEK, "1 Jan, 2017")
+# %%

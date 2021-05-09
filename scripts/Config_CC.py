@@ -5,7 +5,7 @@
 # GetConfig
 # Defines and returns the configuration dict
 def GetConfig():
-    config = dict();
+    config = dict()
     
     # Favourability Score: CompareToFutureData
     # How many days to exclude from training because the 'to buy' score is not well defined
@@ -14,9 +14,9 @@ def GetConfig():
     
 #    config['outputRanges'] = [[1,5], [6,25], [26,125]] # The ranges over which to calculate output scores
     # Starts at 1
-    config['outputRanges'] = [[12,48]]
+    # I'm using hourly data
+    config['outputRanges'] = [[6,24], [24,72], [72,168] ]
     # Also defines the number of output periods
-    # About 246 trading days per year
     
     # When the date is within 'excludeRecentDays' of the end of the data, then
     # the 'favourability' score cannot be completely calculated.
@@ -24,7 +24,7 @@ def GetConfig():
     # more towards zero as the more and more dates are missing. When it's
     # false, the score will be calculated assuming that the price does not vary
     # at all from the last day that data exists
-    config['pullUncertainYTo0'] = True;
+    config['pullUncertainYTo0'] = True
     
     
 #    # Volume Analysis
