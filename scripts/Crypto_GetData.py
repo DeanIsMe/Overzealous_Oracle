@@ -34,7 +34,8 @@ def GetHourlyDf(coins, numHours):
 
     api = pycwatch.rest # create api client
     #TODO create and include my API key
-    # get list of available assets
+
+    # list of available assets
     #assets = api.list_assets()
     #price = api.get_market_price(exchange, pair)
 

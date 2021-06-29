@@ -225,7 +225,7 @@ class CWRNNCell(Layer):
             unitsPerMod = self.units // self.clock_numPeriods
             
             def if_true():
-                hModule = K.dot(h_tm1[:,s:], self.rec_kernel_c_mod[i]) + K.dot(inputs, self.kernel_c_mod[i]);
+                hModule = K.dot(h_tm1[:,s:], self.rec_kernel_c_mod[i]) + K.dot(inputs, self.kernel_c_mod[i])
                 if self.use_bias:
                     hModule = K.bias_add(hModule, self.bias_mod[i])
                 if self.recurrent_activation is not None:

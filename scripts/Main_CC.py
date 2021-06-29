@@ -53,10 +53,10 @@ def PrintDataLimits(inData, outData):
 #def FillResultSetup(r):
 #    # Fills basic information into the result class r
 #    # r is ModelResult()
-#    r.samples = samples
+#    r.sampleCount = samples
 #    r.timesteps  = timesteps
-#    r.inFeatures = inFeatures
-#    r.outFeatures = outFeatures
+#    r.inFeatureCount = inFeatures
+#    r.outFeatureCount = outFeatures
 #    r.config = copy.deepcopy(config)
 #    r.coinList = coinList
 #    r.inDataColumns = dfs[0].columns
@@ -76,6 +76,8 @@ r.config = GetConfig()
 r.coinList = ['ETH', 'ETC']
 #r.coinList = ['ETH']
 
+print('Done import')
+
 # %% Get Data
 
 if 0:
@@ -92,13 +94,14 @@ else:
     filehandler = open('../indata/dfs_2coins_4320hours_2021-05-09.pickle', 'rb')
     dfs = pickle.load(filehandler)
     filehandler.close()
+print('Got data')
 
 # %% Prep the training data
-r.samples = len(dfs)
+r.sampleCount = len(dfs)
 r.timesteps = dfs[0].shape[-2]
 
-prices = np.zeros((r.samples, r.timesteps))
-for i in np.arange(r.samples):
+prices = np.zeros((r.sampleCount, r.timesteps))
+for i in np.arange(r.sampleCount):
     prices[i, :] =  np.array(dfs[i]['close'])
 
 FE.AddLogDiff(r, dfs)
@@ -108,32 +111,33 @@ FE.AddEma(r, dfs)
 FE.ScaleLoadedData(dfs) # High, Low, etc
 
 r.inDataColumns = list(dfs[0].columns)
-r.inFeatures = dfs[0].shape[-1]
+r.inFeatureCount = dfs[0].shape[-1]
 
 # Plot a small sample of the input data
 FE.PlotInData(r, dfs, 0, [0, 50])
 
 # Convert to a numpy array
-inData = np.zeros((r.samples, r.timesteps, r.inFeatures))
+inData = np.zeros((r.sampleCount, r.timesteps, r.inFeatureCount))
 for i, df in enumerate(dfs):
     inData[i] = np.array(df)
 
 # OUTPUT DATA
 outData = FE.CalcFavScores(r.config, prices)
-r.outFeatures = outData.shape[-1]
+r.outFeatureCount = outData.shape[-1]
 
 #Scale output values to a reasonable range
 #17/12/2017: dividing by 90th percentile was found to be a good scale for SGD
-for i in np.arange(r.outFeatures):
+for i in np.arange(r.outFeatureCount):
     outData[:,:,i] /= np.percentile(np.abs(outData[:,:,i]), 90)
     
 # Print out data
 FE.PlotOutData(r, prices, outData, 0)
 
-
+print(f'Input data shape = {inData.shape} (samples={inData.shape[0]}, timeSteps={inData.shape[1]}, features={inData.shape[0]})')
+print(f'Output data shape = {outData.shape}')
 
  # %%
- single = True
+single = True
 if single:
 # *****************************************************************************
 # Single Run
@@ -230,11 +234,11 @@ else:
 #                dfs[i] = dfs[i][-tPoints.sum():] # cut out the start       
 #            
 #            # STANDARD PROCESSING
-#            r.samples = len(dfs)
+#            r.sampleCount = len(dfs)
 #            r.timesteps = dfs[0].shape[-2]
 #
-#            prices = np.zeros((r.samples, r.timesteps))
-#            for i in np.arange(r.samples):
+#            prices = np.zeros((r.sampleCount, r.timesteps))
+#            for i in np.arange(r.sampleCount):
 #                prices[i, :] =  np.array(dfs[i]['close'])
 #            
 #            FE.AddLogDiff(r, dfs)
@@ -244,20 +248,20 @@ else:
 #            FE.ScaleLoadedData(dfs) # High, Low, etc
 #            
 #            r.inDataColumns = list(dfs[0].columns)
-#            r.inFeatures = dfs[0].shape[-1]
+#            r.inFeatureCount = dfs[0].shape[-1]
 #            
 #            # Convert to a numpy array
-#            inData = np.zeros((r.samples, r.timesteps, r.inFeatures));
+#            inData = np.zeros((r.sampleCount, r.timesteps, r.inFeatureCount))
 #            for i, df in enumerate(dfs):
 #                inData[i] = np.array(df)
 #            	
 #            # OUTPUT DATA
 #            outData = FE.CalcFavScores(r.config, prices)
-#            r.outFeatures = outData.shape[-1]
+#            r.outFeatureCount = outData.shape[-1]
 #            
 #            #Scale output values to a reasonable range
 #            #17/12/2017: dividing by 90th percentile was found to be a good scale for SGD
-#            for i in np.arange(r.outFeatures):
+#            for i in np.arange(r.outFeatureCount):
 #                outData[:,:,i] /= np.percentile(np.abs(outData[:,:,i]), 90)
             # *********************************************************************
             

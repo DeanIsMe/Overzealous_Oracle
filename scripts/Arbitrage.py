@@ -10,7 +10,7 @@ import pandas as pd
 import crycompare as cc
 
 # BINANCE
-btcHas = ['ETH','TRX','NEO','XRP','NEBL','BNB','BCD','VEN','EOS','ARN','ADA','ICX','WTC','LTC','BCC','XLM','ELF','XVG','IOTA','APPC','QSP','WTC','GAS','QTUM','HSR','POE','BTS','ZRX','TRIG','BQX','WABI','XMR','INS','BTG','OMG','FUEL','VIBE','LEND','GTO','SUB','LSK','BRD','STRAT','ZEC','DASH','ENG','TNB','REQ','TNT','CND','POWR','AION','KNC','CTR','ENJ','FUN','LRC','AST','BCPT','NULS','MTH','DGD','SALT','SNT','OST','BAT','LINK','MCO','WINGS','MANA','NAV','CMT','RCN','GVT','EDO','CDT','PPT','GXS','WAVES','MOD','ARK','XZC','DNT','LUN','MTL','RDN','KMD','SNGLS','EVX','YOYO','ICN','VIB','RLC','MDA','SNM','AMB','DLT','STORJ','OAX','ADX','BNT'];
+btcHas = ['ETH','TRX','NEO','XRP','NEBL','BNB','BCD','VEN','EOS','ARN','ADA','ICX','WTC','LTC','BCC','XLM','ELF','XVG','IOTA','APPC','QSP','WTC','GAS','QTUM','HSR','POE','BTS','ZRX','TRIG','BQX','WABI','XMR','INS','BTG','OMG','FUEL','VIBE','LEND','GTO','SUB','LSK','BRD','STRAT','ZEC','DASH','ENG','TNB','REQ','TNT','CND','POWR','AION','KNC','CTR','ENJ','FUN','LRC','AST','BCPT','NULS','MTH','DGD','SALT','SNT','OST','BAT','LINK','MCO','WINGS','MANA','NAV','CMT','RCN','GVT','EDO','CDT','PPT','GXS','WAVES','MOD','ARK','XZC','DNT','LUN','MTL','RDN','KMD','SNGLS','EVX','YOYO','ICN','VIB','RLC','MDA','SNM','AMB','DLT','STORJ','OAX','ADX','BNT']
 ethHas = ['TRX','NEO','XRP','EOS','VEN','ADA','BNB','NEBL','ICX','XLM','IOTA','BCD','LTC','ARN','XVG','BCC','ELF','ZRX','APPC','QSP','WTC','REQ','QTUM','POE','ETC','OMG','LEND','FUEL','WABI','BQX','SUB','BTS','LRC','ENG','XMR','KNC','AION','INS','TNB','LINK','GTO','TRIG','DASH','AST','FUN','POWR','OST','VIBE','ENJ','TNT','CND','ZEC','BTG','DGD','LSK','HSR','STRAT','SNT','MTH','CTR','SALT','BAT','RDN','NULS','BCPT','CMT','ICN','PPT','CDT','BRD','GXS','RCN','ARK','GVT','MOD','SNGLS','MCO','MANA','NAV','AMB','DNT','WAVES','OAX','MDA','EDO','SNM','XZC','KMD','LUN','MTL','BNT','EVX','STORJ','VIB','DLT','ADX','WINGS']
 bnbHas = ['ETH','NEO','NEBL','LTC','VEN','XLM','BCC','ICX','APPC','QSP','WABI','TRIG','BTS','CND','WTC','LSK','GTO','NULS','CMT','BCPT','POWR','BAT','RCN','AION','XZC','MCO','NAV','AMB','OST','RDN','BRD','WAVES','ADX','RLC','DLT']
 
@@ -47,7 +47,7 @@ while not success:
         coinList.remove(msg[i:i+j])
         print('\nRemoving from coinList: ' + msg[i:i+j])
     else:
-        success = True;
+        success = True
     
 
 df = pd.DataFrame(allPrices)

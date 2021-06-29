@@ -216,7 +216,7 @@ def AddVix(r, dfs, prices):
     # Add VIX - Volatility Index to a list of data frames
     """
     volatility = CalcVolatility(r.config, prices)
-    for i in np.arange(r.samples):
+    for i in np.arange(r.sampleCount):
         for j in np.arange(volatility.shape[-1]):
             cName = 'vix{}'.format(j+1) # Column name
             dfs[i][cName] = volatility[i,:,j]

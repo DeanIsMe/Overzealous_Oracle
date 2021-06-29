@@ -29,27 +29,27 @@ class ModelResult():
     # Saves all data about a model, including training and testing
     # Used to save information about batches
     def __init__(self):
-        self.isBatch = False;
-        self.batchName = '';
-        self.batchRunName = '';
-        self.samples = 0;
-        self.timesteps = 0;
-        self.inFeatures = 0;
-        self.outFeatures = 0;
+        self.isBatch = False
+        self.batchName = ''
+        self.batchRunName = ''
+        self.sampleCount = 0
+        self.timesteps = 0
+        self.inFeatureCount = 0
+        self.outFeatureCount = 0
                
         self.trainData = 0 # See class above
         self.inDataColumns = []
         self.coinList = []
         
-        self.model = 0;
-        self.kerasOpt = 0;
+        self.model = 0
+        self.kerasOpt = 0
         self.kerasOptStr = ''
         self.modelSummary = ''
-        self.config = 0;
+        self.config = 0
         
         self.date = datetime.date.today()
-        self.trainTime = 0;
-        self.prediction = [];
+        self.trainTime = 0
+        self.prediction = []
         self.trainAbsErr = 0
         self.neutralTrainAbsErr = 0 # train error if output was 'always neutral'
         self.neutralTrainSqErr = 0 # train error if output was 'always neutral'

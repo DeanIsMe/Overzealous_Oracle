@@ -28,7 +28,7 @@ def GetConfig():
     
     
 #    # Volume Analysis
-#    config['volMaxDaysPast'] = 246;
+#    config['volMaxDaysPast'] = 246
     
     # After training, change the weights to the model that had the best 
     # validation score
@@ -41,8 +41,8 @@ def GetConfig():
 #    
 #        
 #    # Neural Network
-    config['neurons'] = [128, 128]; # Number of neurons in LSTM
-    config['epochs'] = 64; # Number of complete passes of the data (subject to early stopping)
+    config['neurons'] = [128, 128] # Number of neurons in LSTM
+    config['epochs'] = 64 # Number of complete passes of the data (subject to early stopping)
 
     config['dataRatios'] = [0.75, 0.2 ,0.05] # Training, Validation, Testing
     #note: 03/02/2018 I am using the same set for validation and testing

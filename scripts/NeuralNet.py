@@ -8,7 +8,8 @@ Created on Wed Aug 30 21:12:18 2017
 import numpy as np
 import matplotlib.pyplot as plt
 from keras.models import Sequential, Model
-from keras.layers import Dense, LSTM, Input, GRU, Activation
+
+import keras
 from DataTypes import TrainData
 import pandas as pd
 import keras.callbacks
@@ -239,12 +240,12 @@ def _MakeNetwork(r):
             act = 'tanh'
         
         if i == 0:
-            r.model.add(LSTM(neurons, activation=act, 
-                            batch_input_shape=(r.samples, None, r.inFeatures),
+            r.model.add(keras.layers.LSTM(neurons, activation=act, 
+                            batch_input_shape=(r.sampleCount, None, r.inFeatureCount),
                              stateful=False, return_sequences=True,
                              dropout=r.config['dropout']))
         else:
-            r.model.add(LSTM(neurons, activation=act,
+            r.model.add(keras.layers.LSTM(neurons, activation=act,
                              stateful=False, return_sequences=True,
                              dropout=r.config['dropout']))
 
@@ -252,7 +253,7 @@ def _MakeNetwork(r):
     # if bias is allowed in the output layer, then the output ends up with a
     # 'floor' from which it rises, which is inapproriate for this type of output
     # 24/03/2018
-    r.model.add(Dense(r.outFeatures, use_bias=False))
+    r.model.add(keras.layers.Dense(r.outFeatureCount, use_bias=False))
         
 # Branched network (linear + saturating branches) 18/02/2018
 #    main_input = Input(batch_shape=(samples, 1, inFeatures), name='main_input')
@@ -427,7 +428,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
 #==========================================================================
 def TestNetwork(r, dailyPrice, inData, outData):
     tInd = _CalcIndices(inData.shape[-2], r.config['dataRatios'], r.config['excludeRecentDays'])
-    tPlot = np.r_[0:inData.shape[-2]]; # Range of output plot (all data)
+    tPlot = np.r_[0:inData.shape[-2]] # Range of output plot (all data)
     samples = inData.shape[-3]
     if (r.config['dataRatios'][2] > 0.1):
         print('WARNING! TestNetwork uses Val Data as the test data, but Test Data also exists. ')
@@ -439,13 +440,13 @@ def TestNetwork(r, dailyPrice, inData, outData):
     
     def _PlotOutput(dailyPrice, out, predict, tRange, sample):
         """Plot a single output feature of 1 sample"""
-        plotsHigh = 1+r.outFeatures
+        plotsHigh = 1+r.outFeatureCount
         plt.figure(1, figsize=(15,4*plotsHigh))
         plt.subplot(plotsHigh, 1, 1)
         plt.plot(dailyPrice[sample, tRange]) # Daily data
         plt.title('Prices. Sample {} ({}) [{}]'.format(r.coinList[sample], sample, r.batchRunName))
         
-        for feature in range(r.outFeatures):
+        for feature in range(r.outFeatureCount):
             plt.subplot(plotsHigh, 1, 2+feature)
             predictYPlot = predictY[sample, :, feature]
             outPlot = out[sample, tRange, feature]

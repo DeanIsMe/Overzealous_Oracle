@@ -40,8 +40,8 @@ class ClockworkRNNCell(Layer):
         bias_constraint: Constraint function applied to the bias vector
             (see [constraints](../constraints.md)).
         period_spec: it is the special constant of clockwork, 
-            which present the clock period of each netron group;
-            it is used to calculatr the utm_mask and t % Ti;
+            which present the clock period of each netron group
+            it is used to calculate the utm_mask and t % Ti
     """
 
     def __init__(self, units, clock_periods,
@@ -104,34 +104,34 @@ class ClockworkRNNCell(Layer):
             self.bias = None
         
         # According to paper: http://arxiv.org/abs/1402.3511
-        # the Clockwork network connection is upper Triangle matrix by group;
+        # the Clockwork network connection is upper Triangle matrix by group
         # that means all of the units of clockwork cell will be divide into several group,
         # each group size is the same, and the connection rule is:
         # 1. If group j period > group i period, then 
-        #     all of units of group j should connect with group i;
-        # 2. regarding group internal connection, all of the units should be fully connected;
+        #     all of units of group j should connect with group i
+        # 2. regarding group internal connection, all of the units should be fully connected
         # so, below mask is the implement of above connection feature. 
         # the detail please refer the figure 1 in paper.(http://arxiv.org/abs/1402.3511) 
         mask = np.zeros((self.units, self.units), K.floatx())
 
-        # calculate the upper Triangle matrix mask for clockwork; and
+        # calculate the upper Triangle matrix mask for clockwork and
         # generate period for each unit(netron) 
         for group_index, group_period in enumerate(self.period_spec):
             mask[group_index * self.group_size:(group_index + 1) * self.group_size, group_index*self.group_size:] = 1
 
         # utm_mask: Upper Triangle Matrix Mask, it is the special mask of clockwork,
-        # it presents the netron connection of Clockwork network;
+        # it presents the netron connection of Clockwork network
         # Note, this mask is based on simpleRNN, because simpleRNN is fully interconnected,
-        # but Clockwork is Upper Triangle base on simpleRNN fully interconnected matrix;
+        # but Clockwork is Upper Triangle base on simpleRNN fully interconnected matrix
         self.utm_mask = K.variable(mask, name='clockwork_mask')
 
         self.built = True
 
     def call(self, inputs, states, training=None):
         # The states[0] stores the previous output date, 
-        # and the shape is (batch_size, self.units);
+        # and the shape is (batch_size, self.units)
         prev_output = states[0]
-        # the states[1] stores the current timestep;
+        # the states[1] stores the current timestep
         timestep = states[1]
         
         # base on timestep, got the valid column 
@@ -139,10 +139,10 @@ class ClockworkRNNCell(Layer):
 
         # Compute (W_I*x_t + b_I)
         # Please refer equation (1) of the paper 
-        # The inputs shape is (batch_size, input_dim);
+        # The inputs shape is (batch_size, input_dim)
         # According to the paper, only need to calc the valid group,
-        # that means only need calc the valid_column in front of weight matrix;
-        # the invalid group column(upper group column in matrix) won't attend compute; 
+        # that means only need calc the valid_column in front of weight matrix
+        # the invalid group column(upper group column in matrix) won't attend compute
         h = K.dot(inputs, self.kernel[:,:valid_column])
         if self.bias is not None:
             h = K.bias_add(h, self.bias[:valid_column])
@@ -150,7 +150,7 @@ class ClockworkRNNCell(Layer):
         # Compute (W_H*y_{t-1} + b_H)
         # please refer equation (1) of the paper
         # Note: the y_{t-1} means the previous output (state)
-        # Note: the self.recurrent_kernel * self.utm_mask maybe move to build function;
+        # Note: the self.recurrent_kernel * self.utm_mask maybe move to build function
         # similar to above compute, we only need compute the valid_column part.
         output = h + K.dot(prev_output, (self.recurrent_kernel * self.utm_mask)[:,:valid_column])
         if self.activation is not None:
@@ -327,7 +327,7 @@ class ClockworkRNN(RNN):
         timesteps = input_shape[1]
 
         # timestep % period(ts % Ti) calculation needn't run each time in call(RNN Step),
-        # we can calculate it in build;
+        # we can calculate it in build
         # How to use valid_column_group ?
         # self.valid_column_group[ts] store which max column of weight matrix will attend computing.
         valid_column_group = []

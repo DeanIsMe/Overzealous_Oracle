@@ -59,40 +59,40 @@ def DrawPlot(valA, valB, nameA, nameB, data, nameY):
     # valA is the x axis
     if (not isinstance(valA[0], numbers.Number) or len(valA) < 3):
         return
-    plt.figure(2, figsize=(12,6));
+    plt.figure(2, figsize=(12,6))
     ax = plt.gca()
-    ax.plot(valA, data);
+    ax.plot(valA, data)
     diffA = np.diff(valA)
     if diffA[-1]/diffA[0] > 5:
         ax.set_xscale('log')
         ax.set_xticks(valA)
         ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    plt.xlabel(nameA);
-    plt.ylabel(nameY);
+    plt.xlabel(nameA)
+    plt.ylabel(nameY)
     plt.title('{} vs {} (Legend = {})'.format(nameY, nameA, nameB))
-    plt.legend(valB); 
+    plt.legend(valB)
     plt.show()
 
 # Test Error vs bat1Val
 data = np.array([[r.testScore for r in results[idx2]] for idx2 in range(bat2Len)])
-DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'Test Score');
+DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'Test Score')
 
 # Test Error vs bat2Val
-DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'Test Score');
+DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'Test Score')
 
 # Train Error vs bat1Val
 data = np.array([[r.trainScore for r in results[idx2]] for idx2 in range(bat2Len)])
-DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'Train Score');
+DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'Train Score')
 
 # Train Error vs bat2Val
-DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'Train Score');
+DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'Train Score')
 
 # Training Time vs bat1Val
 data = np.array([[r.trainTime for r in results[idx2]] for idx2 in range(bat2Len)])
-DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'Training Time');
+DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'Training Time')
 
 # Training Time vs bat2Val
-DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'Training Time');
+DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'Training Time')
 
 ## PLOT ALL PREDICTIONS
 #for idx1 in range(bat1Len):
