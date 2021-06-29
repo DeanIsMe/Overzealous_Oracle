@@ -7,7 +7,7 @@ Created on Wed Aug 30 21:12:18 2017
 
 import numpy as np
 import matplotlib.pyplot as plt
-from keras.models import Sequential, Model
+from keras.models import Sequential
 
 import keras
 from DataTypes import TrainData
@@ -234,20 +234,21 @@ def _MakeNetwork(r):
     # Add the LSTM layers
     numLayers = len(r.config['neurons'])
     for i, neurons in enumerate(r.config['neurons']):
-        if i == numLayers-1:
-            act = 'tanh'
-        else:
-            act = 'tanh'
-        
-        if i == 0:
-            r.model.add(keras.layers.LSTM(neurons, activation=act, 
-                            batch_input_shape=(r.sampleCount, None, r.inFeatureCount),
-                             stateful=False, return_sequences=True,
-                             dropout=r.config['dropout']))
-        else:
-            r.model.add(keras.layers.LSTM(neurons, activation=act,
-                             stateful=False, return_sequences=True,
-                             dropout=r.config['dropout']))
+        is_first_layer = (i == 0)
+        is_last_layer = (i == numLayers - 1)
+
+        lstm_args = {
+            'units' : neurons,
+            'activation' : 'tanh',
+            'stateful' : False,
+            'return_sequences' : True, # I'm including output values for all time steps, so always true
+            'dropout' : r.config['dropout']
+        }
+        if is_first_layer:
+            lstm_args['input_shape'] = (None, r.inFeatureCount)
+
+
+        r.model.add(keras.layers.LSTM(**lstm_args))
 
     
     # if bias is allowed in the output layer, then the output ends up with a
@@ -270,8 +271,7 @@ def _MakeNetwork(r):
     
     # mape = mean absolute percentage error
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error'])
-    r.modelSummary = r.model.summary()
-    print(r.modelSummary)
+    r.model.summary()
     
     r.trainData = TrainData()
     

@@ -44,7 +44,6 @@ class ModelResult():
         self.model = 0
         self.kerasOpt = 0
         self.kerasOptStr = ''
-        self.modelSummary = ''
         self.config = 0
         
         self.date = datetime.date.today()
