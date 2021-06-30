@@ -213,7 +213,8 @@ def Normalise(dfs, cols):
 #==========================================================================
 def AddVix(r, dfs, prices):
     """
-    # Add VIX - Volatility Index to a list of data frames
+    ## VIX
+    Add volatility Index to a list of data frames
     """
     volatility = CalcVolatility(r.config, prices)
     for i in np.arange(r.sampleCount):
@@ -230,10 +231,10 @@ def AddVix(r, dfs, prices):
 #==========================================================================
 def CalcVolatility(config, prices):
     """
-    # Volatility (erraticism)
-    # Use an integral of the differential squared to measure this
-    # Measure it over a large period, and also measure the comparative
-    # erraticism of different time periods
+    ## Volatility (erraticism)
+    Use an integral of the differential squared to measure this
+    Measure it over a large period, and also measure the comparative
+    erraticism of different time periods
     """
     
     # Absolute Erraticism Score
@@ -273,11 +274,11 @@ def CalcVolatility(config, prices):
 #==========================================================================
 def AddRsi(r, dfs):
     """
-    RSI (relative strength index)
+    ### RSI (relative strength index)
     This is essentially the RSI (exponential method), but represented differently
     Real RSI = 100.0 - (100.0 / (1.0 + RS)). It ranges from 0-100 (human intuitive)
-    I calculate a number that hovers around -1 to 1 - machine intuitive
-    dfs is a list fo data frames; a data frame for each sample
+    I calculate a number that hovers around -1 to 1 (machine intuitive).
+    dfs is a list of data frames; a data frame for each sample
     """
     def CalcRSI(ser):
         # ser is a data series

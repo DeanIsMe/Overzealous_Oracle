@@ -19,7 +19,7 @@ import numpy as np
 import keras
 import FeatureExtraction as FE
 from Config_CC import GetConfig
-from NeuralNet import MakeAndTrainNetwork, TestNetwork, MakeAndTrainPrunedNetwork
+
 from DataTypes import ModelResult
 from TestSequences import GetInSeq
 import InputData as indata
@@ -136,7 +136,9 @@ FE.PlotOutData(r, prices, outData, 0)
 print(f'Input data shape = {inData.shape} (samples={inData.shape[0]}, timeSteps={inData.shape[1]}, features={inData.shape[0]})')
 print(f'Output data shape = {outData.shape}')
 
- # %%
+# %% Train!
+from NeuralNet import MakeAndTrainNetwork, TestNetwork, MakeAndTrainPrunedNetwork
+
 single = True
 if single:
 # *****************************************************************************
@@ -145,8 +147,8 @@ if single:
     r.batchRunName = ''
     
     r.config['earlyStopping'] = 0
-    r.config['neurons'] = [512, 256, 128]
-    r.config['epochs'] = 64
+    r.config['neurons'] = [256, 128]
+    r.config['epochs'] = 16
     r.config['inScale'] = 1
     r.config['outScale'] = 1
     r.config['revertToBest'] = True
@@ -298,3 +300,4 @@ else:
     import os
     print('Going to sleep...')
     os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
+# %%

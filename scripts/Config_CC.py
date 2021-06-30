@@ -41,7 +41,13 @@ def GetConfig():
 #    
 #        
 #    # Neural Network
+    
     config['neurons'] = [128, 128] # Number of neurons in LSTM
+    
+    config['convDilation'] = [1, 3, 9, 27, 81]
+    config['convFilters'] = 20 # list or scalar
+    config['convKernelSz'] = 72
+
     config['epochs'] = 64 # Number of complete passes of the data (subject to early stopping)
 
     config['dataRatios'] = [0.75, 0.2 ,0.05] # Training, Validation, Testing

@@ -7,7 +7,6 @@ Created on Wed Aug 30 21:12:18 2017
 
 import numpy as np
 import matplotlib.pyplot as plt
-from keras.models import Sequential
 
 import keras
 from DataTypes import TrainData
@@ -218,10 +217,28 @@ def PlotTrainData(r, subplot=False):
     
     return (maxY, minY)
 
+
 #==========================================================================
 def _MakeNetwork(r):
+    # Prep convolution config
+    convConf = dict()
+    convConf['convDilation'] = r.config['convDilation']
+    convConf['convFilters']  = r.config['convFilters']  
+    convConf['convKernelSz'] = r.config['convKernelSz']
+
+    convLayerCount = max(
+        1 if isinstance(convConf['convDilation'], int) else len(convConf['convDilation']),
+        1 if isinstance(convConf['convFilters'], int)  else len(convConf['convFilters']),
+        1 if isinstance(convConf['convKernelSz'], int) else len(convConf['convKernelSz']),
+    )
+    if isinstance(r.config['convDilation'], int):
+        convConf['convDilation'] = [r.config['convDilation']] * convLayerCount
+    if isinstance(r.config['convFilters'], int):
+        convConf['convFilters'] = [r.config['convFilters']] * convLayerCount
+    if isinstance(r.config['convKernelSz'], int):
+        convConf['convKernelSz'] = [r.config['convKernelSz']] * convLayerCount
+
     #Make a Neural Network
-    
     if type(r.kerasOpt) == int:
         opt = keras.optimizers.Adam(lr=0.001, beta_1=0.9)
         r.optimiser = 'Adam()'
@@ -229,13 +246,36 @@ def _MakeNetwork(r):
         opt = r.kerasOpt
         r.optimiser = 'kerasOpt'
     r.kerasOptStr = str(opt)
+
     
-    r.model = Sequential()
-    # Add the LSTM layers
-    numLayers = len(r.config['neurons'])
+    # Keras functional API
+    # Input
+    main_input = keras.layers.Input(shape=(None, r.inFeatureCount), name='main_input')
+
+    # Make conv layers
+    convLayers = []
+    for i in range(convLayerCount):
+        convLayers.append(keras.layers.Conv1D(
+            filters=convConf['convFilters'][i], 
+            kernel_size=convConf['convKernelSz'][i],
+            dilation_rate=convConf['convDilation'][i],
+            # input_shape=(None, r.inFeatureCount),
+            use_bias=True, padding='causal',
+            name=f"conv1d_{i}_{convConf['convDilation'][i]}x")(main_input))
+
+    if convLayerCount == 0:
+        lstm_feed = main_input
+    elif convLayerCount == 1:
+        lstm_feed = convLayers[0]
+    elif convLayerCount > 1:
+        lstm_feed = keras.layers.concatenate(convLayers)
+
+    # Make the LSTM layers
+    lstmLayerCount = len(r.config['neurons'])
+    
     for i, neurons in enumerate(r.config['neurons']):
         is_first_layer = (i == 0)
-        is_last_layer = (i == numLayers - 1)
+        is_last_layer = (i == lstmLayerCount - 1)
 
         lstm_args = {
             'units' : neurons,
@@ -244,33 +284,19 @@ def _MakeNetwork(r):
             'return_sequences' : True, # I'm including output values for all time steps, so always true
             'dropout' : r.config['dropout']
         }
-        if is_first_layer:
-            lstm_args['input_shape'] = (None, r.inFeatureCount)
+        # if is_first_layer and convLayerCount == 0:
+        #     lstm_args['input_shape'] = (None, r.inFeatureCount)
 
+        lstm_feed = keras.layers.LSTM(**lstm_args)(lstm_feed)
 
-        r.model.add(keras.layers.LSTM(**lstm_args))
+    # Final output layer
+    main_output = keras.layers.Dense(r.outFeatureCount, name='final_output')(lstm_feed)
+    r.model = keras.models.Model(inputs=[main_input], outputs=[main_output])
 
-    
-    # if bias is allowed in the output layer, then the output ends up with a
-    # 'floor' from which it rises, which is inapproriate for this type of output
-    # 24/03/2018
-    r.model.add(keras.layers.Dense(r.outFeatureCount, use_bias=False))
-        
-# Branched network (linear + saturating branches) 18/02/2018
-#    main_input = Input(batch_shape=(samples, 1, inFeatures), name='main_input')
-#    lstm1 = LSTM(64, name='LSTM1')(main_input)
-#    # Saturating branch, for binary decisions
-#    denseSat1 = Dense(64, activation='tanh', name='DenseSat1')(lstm1)
-#    # Linear branch, for passing values
-#    denseLin1 = Dense(64, activation='linear', name='DenseLin1')(lstm1)
-#    # Merge the branches together
-#    merge = keras.layers.concatenate([denseSat1, denseLin1])
-#    # Final output layer
-#    main_output = Dense(outputDim, name='Output')(merge)
-#    r.model = Model(inputs=[main_input], outputs=[main_output])
-    
     # mape = mean absolute percentage error
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error'])
+    #r.model.build(input_shape=(None, r.inFeatureCount))
+    
     r.model.summary()
     
     r.trainData = TrainData()
