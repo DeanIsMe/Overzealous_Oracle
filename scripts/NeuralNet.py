@@ -212,7 +212,7 @@ def PlotTrainData(r, subplot=False):
 #    ax.set_yscale('log')
     
     if not subplot:
-        plt.suptitle('Training Scores')
+        plt.suptitle('Training Errors')
         plt.show()
     
     return (maxY, minY)
@@ -467,22 +467,24 @@ def TestNetwork(r, dailyPrice, inData, outData):
     def _PlotOutput(dailyPrice, out, predict, tRange, sample):
         """Plot a single output feature of 1 sample"""
         plotsHigh = 1+r.outFeatureCount
-        plt.figure(1, figsize=(15,4*plotsHigh))
-        plt.subplot(plotsHigh, 1, 1)
-        plt.plot(dailyPrice[sample, tRange]) # Daily data
-        plt.title('Prices. Sample {} ({}) [{}]'.format(r.coinList[sample], sample, r.batchRunName))
+        fig, axs = plt.subplots(plotsHigh, 1, figsize=(15,4*plotsHigh)) # TODO get this working
+        #plt.figure(1, figsize=(15,4*plotsHigh))
+        #plt.subplot(plotsHigh, 1, 1)
+        axs[0].semilogy(dailyPrice[sample, tRange]) # Daily data
+        axs[0].set_title('Prices. Sample {} ({}) [{}]'.format(r.coinList[sample], sample, r.batchRunName))
         
         for feature in range(r.outFeatureCount):
-            plt.subplot(plotsHigh, 1, 2+feature)
+            #ax = plt.subplot(plotsHigh, 1, 2+feature)
+            ax = axs[1+feature]
             predictYPlot = predictY[sample, :, feature]
             outPlot = out[sample, tRange, feature]
-            l1, = plt.plot(tRange, outPlot, label='Actual')
-            l2, = plt.plot(tRange, predictYPlot, label='Prediction')
-            l3, = plt.plot([tInd['train'][0], tInd['train'][0]], [np.min(outPlot), np.max(outPlot)], label='TrainStart')
-            l4, = plt.plot([tInd['train'][-1], tInd['train'][-1]], [np.min(outPlot), np.max(outPlot)], label='TrainEnd')
-            l0, = plt.plot([tRange[0], tRange[-1]], [0, 0])
-            plt.title('Output Feature {} ({}-{}steps)'.format(feature, r.config['outputRanges'][feature][0], r.config['outputRanges'][feature][1]))
-            plt.legend(handles = [l1, l2, l3 , l4])
+            l1, = ax.plot(tRange, outPlot, label='Actual')
+            l2, = ax.plot(tRange, predictYPlot, label='Prediction')
+            l3, = ax.plot([tInd['train'][0], tInd['train'][0]], [np.min(outPlot), np.max(outPlot)], label='TrainStart')
+            l4, = ax.plot([tInd['train'][-1], tInd['train'][-1]], [np.min(outPlot), np.max(outPlot)], label='TrainEnd')
+            l0, = ax.plot([tRange[0], tRange[-1]], [0, 0])
+            ax.set_title('Output Feature {} ({}-{}steps)'.format(feature, r.config['outputRanges'][feature][0], r.config['outputRanges'][feature][1]))
+            ax.legend(handles = [l1, l2, l3 , l4])
         if r.isBatch and sample == 0:
             try:
                 directory = './' + r.batchName
