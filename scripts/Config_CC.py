@@ -41,10 +41,10 @@ def GetConfig():
 #    
 #        
 #    # Neural Network
-    
-    config['neurons'] = [128, 128] # Number of neurons in LSTM
-    
-    config['convDilation'] = [1, 3, 9, 27, 81]
+    config['neurons'] = [256, 128, 64, 32] # Number of neurons in LSTM
+    # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
+    # The num of conv layers will be the greatest number of valid layers
+    config['convDilation'] = [1, 3, 9, 27, 81] # 
     config['convFilters'] = 20 # list or scalar
     config['convKernelSz'] = 72
 

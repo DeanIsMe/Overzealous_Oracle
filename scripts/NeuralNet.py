@@ -217,10 +217,7 @@ def PlotTrainData(r, subplot=False):
     
     return (maxY, minY)
 
-
-#==========================================================================
-def _MakeNetwork(r):
-    # Prep convolution config
+def PrepConvConfig(r):
     convConf = dict()
     convConf['convDilation'] = r.config['convDilation']
     convConf['convFilters']  = r.config['convFilters']  
@@ -231,21 +228,30 @@ def _MakeNetwork(r):
         1 if isinstance(convConf['convFilters'], int)  else len(convConf['convFilters']),
         1 if isinstance(convConf['convKernelSz'], int) else len(convConf['convKernelSz']),
     )
+    convConf['layerCount'] = convLayerCount
     if isinstance(r.config['convDilation'], int):
         convConf['convDilation'] = [r.config['convDilation']] * convLayerCount
     if isinstance(r.config['convFilters'], int):
         convConf['convFilters'] = [r.config['convFilters']] * convLayerCount
     if isinstance(r.config['convKernelSz'], int):
         convConf['convKernelSz'] = [r.config['convKernelSz']] * convLayerCount
+    
+    return convConf
+
+#==========================================================================
+def MakeNetwork(r):
+    # Prep convolution config
+    convConf = PrepConvConfig(r)
 
     #Make a Neural Network
     if type(r.kerasOpt) == int:
+        # beta_1 = exponential decay rate for 1st moment estimates. Default=0.9
+        # beta_2 = exponential decay rate for 2nd moment estimates. Default=0.999
         opt = keras.optimizers.Adam(lr=0.001, beta_1=0.9)
-        r.optimiser = 'Adam()'
+        r.optimiser = 'Adam'
     else:
         opt = r.kerasOpt
-        r.optimiser = 'kerasOpt'
-    r.kerasOptStr = str(opt)
+        r.optimiser = r.kerasOptStr
 
     
     # Keras functional API
@@ -254,7 +260,7 @@ def _MakeNetwork(r):
 
     # Make conv layers
     convLayers = []
-    for i in range(convLayerCount):
+    for i in range(convConf['layerCount']):
         convLayers.append(keras.layers.Conv1D(
             filters=convConf['convFilters'][i], 
             kernel_size=convConf['convKernelSz'][i],
@@ -263,11 +269,11 @@ def _MakeNetwork(r):
             use_bias=True, padding='causal',
             name=f"conv1d_{i}_{convConf['convDilation'][i]}x")(main_input))
 
-    if convLayerCount == 0:
+    if convConf['layerCount'] == 0:
         lstm_feed = main_input
-    elif convLayerCount == 1:
+    elif convConf['layerCount'] == 1:
         lstm_feed = convLayers[0]
-    elif convLayerCount > 1:
+    elif convConf['layerCount'] > 1:
         lstm_feed = keras.layers.concatenate(convLayers)
 
     # Make the LSTM layers
@@ -305,19 +311,19 @@ def _MakeNetwork(r):
 
 
 #==========================================================================
-def _TrainNetwork(r, inData, outData, final=True):
+def TrainNetwork(r, inData, outData, final=True):
     """
     final == True indicates that this is the final call for TrainNetwork for
     this model.
     """
-    tInd = _CalcIndices(inData.shape[-2], r.config['dataRatios'], r.config['excludeRecentDays'])
+    r.tInd = _CalcIndices(inData.shape[-2], r.config['dataRatios'], r.config['excludeRecentDays'])
     
     #Callbacks
     callbacks = []
     
     # Callback to validate data
     validationCb = ValidationCb()
-    valI = tInd['val'] # Validation indices
+    valI = r.tInd['val'] # Validation indices
     startPredict = max(0, valI.min()-100) # This number of time steps are used to build state before starting predictions
     validationCb.setup(inData[:,startPredict:valI.max()+1,:], outData[:,valI,:], r.trainData, r.config['earlyStopping'])
         
@@ -337,9 +343,9 @@ def _TrainNetwork(r, inData, outData, final=True):
 
 #    callbacks += [keras.callbacks.TensorBoard(log_dir='./logs2', histogram_freq=0, batch_size=32, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)]
     print('\nStarting training. Max {} epochs'.format(epochsLeft));
-    trainX = inData[:, tInd['train']]
-    trainY = outData[:, tInd['train']]
-    valY = outData[:, tInd['val']]
+    trainX = inData[:, r.tInd['train']]
+    trainY = outData[:, r.tInd['train']]
+    valY = outData[:, r.tInd['val']]
     
     r.neutralTrainAbsErr = np.sum(np.abs(trainY)) / trainY.size
     r.neutralValAbsErr = np.sum(np.abs(valY)) / valY.size
@@ -369,8 +375,8 @@ def _TrainNetwork(r, inData, outData, final=True):
 
 #==========================================================================
 def MakeAndTrainNetwork(r, inData, outData):
-    _MakeNetwork(r)
-    _TrainNetwork(r, inData, outData)
+    MakeNetwork(r)
+    TrainNetwork(r, inData, outData)
     return
 
 #==========================================================================
@@ -383,7 +389,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     models = [0] * options
     trainData = [0] * options
     for i in range(options):
-        _MakeNetwork(r)
+        MakeNetwork(r)
         models[i] = r.model
         trainData[i] = r.trainData
     # Perform initial training to test each model
@@ -398,7 +404,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
         print('Training model {} out of {}'.format(i, options))
         r.model = models[i]
         r.trainData = trainData[i]
-        _TrainNetwork(r, inData, outData, final=False)
+        TrainNetwork(r, inData, outData, final=False)
         
         lossTrain[i] = r.trainData.lossTrain[-1]
         lossVal[i] = r.trainData.lossVal[-1]
@@ -448,43 +454,45 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     r.config['epochs'] = epochBackup
     r.model = models[bestI]
     r.trainData = trainData[bestI]
-    _TrainNetwork(r, inData, outData)
+    TrainNetwork(r, inData, outData)
     return
     
 #==========================================================================
-def TestNetwork(r, dailyPrice, inData, outData):
-    tInd = _CalcIndices(inData.shape[-2], r.config['dataRatios'], r.config['excludeRecentDays'])
+def TestNetwork(r, priceData, inData, outData):
     tPlot = np.r_[0:inData.shape[-2]] # Range of output plot (all data)
     samples = inData.shape[-3]
     if (r.config['dataRatios'][2] > 0.1):
         print('WARNING! TestNetwork uses Val Data as the test data, but Test Data also exists. ')
         print(r.config['dataRatios'])
-    testI = tInd['val'] # Validation indices used as test
+    testI = r.tInd['val'] # Validation indices used as test
     
     #Predictions
     predictY = r.model.predict(inData, batch_size=samples)
     
-    def _PlotOutput(dailyPrice, out, predict, tRange, sample):
+    def _PlotOutput(priceData, out, predict, tRange, sample):
         """Plot a single output feature of 1 sample"""
         plotsHigh = 1+r.outFeatureCount
-        fig, axs = plt.subplots(plotsHigh, 1, figsize=(15,4*plotsHigh)) # TODO get this working
-        #plt.figure(1, figsize=(15,4*plotsHigh))
-        #plt.subplot(plotsHigh, 1, 1)
-        axs[0].semilogy(dailyPrice[sample, tRange]) # Daily data
-        axs[0].set_title('Prices. Sample {} ({}) [{}]'.format(r.coinList[sample], sample, r.batchRunName))
+        fig, axs = plt.subplots(plotsHigh, 1, figsize=(12,3*plotsHigh)) # TODO get this working
+        fig.tight_layout()
+        
+        ax = axs[0]
+        ax.figure = fig # required to avoid an exception
+        ax.semilogy(tRange, priceData[sample, tRange]) # Daily data
+        ax.set_title('Prices. Sample {} ({}) [{}]'.format(r.coinList[sample], sample, r.batchRunName))
         
         for feature in range(r.outFeatureCount):
-            #ax = plt.subplot(plotsHigh, 1, 2+feature)
             ax = axs[1+feature]
-            predictYPlot = predictY[sample, :, feature]
+            ax.figure = fig
+            predictYPlot = predict[sample, :, feature]
             outPlot = out[sample, tRange, feature]
             l1, = ax.plot(tRange, outPlot, label='Actual')
             l2, = ax.plot(tRange, predictYPlot, label='Prediction')
-            l3, = ax.plot([tInd['train'][0], tInd['train'][0]], [np.min(outPlot), np.max(outPlot)], label='TrainStart')
-            l4, = ax.plot([tInd['train'][-1], tInd['train'][-1]], [np.min(outPlot), np.max(outPlot)], label='TrainEnd')
+            l3, = ax.plot([r.tInd['train'][0], r.tInd['train'][0]], [np.min(outPlot), np.max(outPlot)], label='TrainStart')
+            l4, = ax.plot([r.tInd['train'][-1], r.tInd['train'][-1]], [np.min(outPlot), np.max(outPlot)], label='TrainEnd')
             l0, = ax.plot([tRange[0], tRange[-1]], [0, 0])
             ax.set_title('Output Feature {} ({}-{}steps)'.format(feature, r.config['outputRanges'][feature][0], r.config['outputRanges'][feature][1]))
             ax.legend(handles = [l1, l2, l3 , l4])
+        # Save file if necessary
         if r.isBatch and sample == 0:
             try:
                 directory = './' + r.batchName
@@ -499,13 +507,13 @@ def TestNetwork(r, dailyPrice, inData, outData):
     r.prediction = predictY
     # Plot prediction
     for s in range(samples):
-        _PlotOutput(dailyPrice, outData, predictY, tPlot, s)
+        _PlotOutput(priceData, outData, predictY, tPlot, s)
     
     r.testAbsErr = np.sum(np.abs(predictY[:,testI,:] - outData[:,testI,:])) / predictY[:,testI,:].size
     r.neutralTestAbsErr = np.sum(np.abs(outData[:,testI,:])) / outData[:,testI,:].size
     r.testScore = r.neutralTestAbsErr / r.testAbsErr
     
-    r.trainAbsErr = np.sum(np.abs(predictY[:,tInd['train'],:] - outData[:,tInd['train'],:])) / predictY[:,tInd['train'],:].size
+    r.trainAbsErr = np.sum(np.abs(predictY[:,r.tInd['train'],:] - outData[:,r.tInd['train'],:])) / predictY[:,r.tInd['train'],:].size
     r.trainScore = r.neutralTrainAbsErr / r.trainAbsErr
     
     # Assess the level of movement (some networks don't train and the result

@@ -41,23 +41,24 @@ class ModelResult():
         self.inDataColumns = []
         self.coinList = []
         
-        self.model = 0
-        self.kerasOpt = 0
-        self.kerasOptStr = ''
-        self.config = 0
+        self.model = None
+        self.kerasOpt = 0 # 0 = Adam. Otherwise, set to an Optimizer
+        self.kerasOptStr = None
+        self.config = None
         
         self.date = datetime.date.today()
-        self.trainTime = 0
+        self.trainTime = None
         self.prediction = []
-        self.trainAbsErr = 0
-        self.neutralTrainAbsErr = 0 # train error if output was 'always neutral'
-        self.neutralTrainSqErr = 0 # train error if output was 'always neutral'
-        self.trainScore = 0 # neutralTrainAbsErr / trainAbsErr
+        self.trainAbsErr = None
+        self.neutralTrainAbsErr = None # train error if output was 'always neutral'
+        self.neutralTrainSqErr = None # train error if output was 'always neutral'
+        self.trainScore = None # neutralTrainAbsErr / trainAbsErr
         
-        self.neutralValAbsErr = 0
-        self.neutralValSqErr = 0
+        self.neutralValAbsErr = None
+        self.neutralValSqErr = None
         
-        self.testAbsErr = 0
-        self.neutralTestAbsErr = 0 # test error if output was 'always neutral'
-        self.testScore = 0 # neutralTestAbsErr / testAbsErr
+        self.testAbsErr = None
+        self.neutralTestAbsErr = None # test error if output was 'always neutral'
+        self.testScore = None # neutralTestAbsErr / testAbsErr
+        self.tInd = None # Dictionary with keys: 'train', 'val', 'test'. Values are the time indices in each set
         

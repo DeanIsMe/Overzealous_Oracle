@@ -15,6 +15,7 @@ Created on Dec 17  2017
 
 %matplotlib widget
 
+import os
 import numpy as np
 import keras
 import FeatureExtraction as FE
@@ -35,7 +36,7 @@ from datetime import datetime
 
 from keras import regularizers
 
-#D:/Dean/Uni/Shares/Python Keras Tensorflow
+
 def PrintDataLimits(inData, outData):
     print('Input Columns:')
     print(r.inDataColumns)
@@ -73,7 +74,7 @@ r.config = GetConfig()
 
 #r.coinList = ['ETH','BTC','BCH','XRP','LTC','XLM','NEO','EOS','XEM', 'IOT','DOGE','ADA','POT','VET','XLM','ETC']
 #r.coinList = ['ETH','BTC','BCH','XRP','LTC']
-r.coinList = ['ETH', 'ETC']
+r.coinList = ['BTC', 'ETH']
 #r.coinList = ['ETH']
 
 print('Done import')
@@ -85,13 +86,13 @@ if 0:
     dfs = cgd.GetHourlyDf(r.coinList, numHours) # a list of data frames
     # To save a data set:
     date_str = datetime.now().strftime('%Y-%m-%d')
-    filehandler = open(f'../indata/dfs_{len(dfs)}coins_{numHours}hours_{date_str}.pickle', 'wb')
+    filehandler = open(f'./indata/dfs_{len(dfs)}coins_{numHours}hours_{date_str}.pickle', 'wb')
     pickle.dump(dfs, filehandler)
     filehandler.close()
 else:
     # !@#$
 #    filehandler = open('dfs_5coins_40days_2018-02-17.pickle', 'rb')
-    filehandler = open('../indata/dfs_2coins_4320hours_2021-05-09.pickle', 'rb')
+    filehandler = open('./indata/dfs_2coins_4320hours_2021-05-09.pickle', 'rb')
     dfs = pickle.load(filehandler)
     filehandler.close()
 print('Got data')
@@ -137,7 +138,6 @@ print(f'Input data shape = {inData.shape} (samples={inData.shape[0]}, timeSteps=
 print(f'Output data shape = {outData.shape}')
 
 # %% Train!
-from NeuralNet import MakeAndTrainNetwork, TestNetwork, MakeAndTrainPrunedNetwork
 
 single = True
 if single:
@@ -156,9 +156,14 @@ if single:
     thisInData = inData * r.config['inScale']
     thisOutData = outData * r.config['outScale']
     PrintDataLimits(thisInData, thisOutData)
-    MakeAndTrainNetwork(r, thisInData, thisOutData)
-#    MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
-    TestNetwork(r, prices, thisInData, thisOutData)
+    prunedNetwork = False
+    if not prunedNetwork:
+        NeuralNet.MakeNetwork(r)
+        NeuralNet.TrainNetwork(r, thisInData, thisOutData)
+    else:
+        NeuralNet.MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
+
+    NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
 
 else:
     # *****************************************************************************
@@ -270,9 +275,9 @@ else:
             thisInData = inData * r.config['inScale']
             thisOutData = outData * r.config['outScale']
 #            PrintDataLimits(thisInData, thisOutData)
-            MakeAndTrainNetwork(r, thisInData, thisOutData)
-#            MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
-            TestNetwork(r, prices, thisInData, thisOutData)
+            NeuralNet.MakeAndTrainNetwork(r, thisInData, thisOutData)
+#            NeuralNet.MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
+            NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
     
     print('\n\nBATCH RUN FINISHED!\n')
     # SAVE THE DATA
@@ -297,7 +302,6 @@ else:
             results[idx2][idx1].model = models[idx2][idx1]
     
     #Go to sleep
-    import os
     print('Going to sleep...')
     os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
 # %%
