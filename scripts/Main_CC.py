@@ -15,10 +15,13 @@ Created on Dec 17  2017
 
 %matplotlib widget
 
+
 import os
+
 import numpy as np
 import keras
 import FeatureExtraction as FE
+import NeuralNet
 from Config_CC import GetConfig
 
 from DataTypes import ModelResult
@@ -62,6 +65,8 @@ def PrintDataLimits(inData, outData):
 #    r.coinList = coinList
 #    r.inDataColumns = dfs[0].columns
 
+os.chdir(os.path.dirname(os.path.dirname(__file__))) # E
+print(f'Working directory is "{os.getcwd()}"')
 
 KB.clear_session()
 
@@ -138,6 +143,13 @@ print(f'Input data shape = {inData.shape} (samples={inData.shape[0]}, timeSteps=
 print(f'Output data shape = {outData.shape}')
 
 # %% Train!
+
+# To reload the NeuralNet function for debugging:
+if 0:
+    print('Reloading NeuralNet')
+    import importlib
+    importlib.reload(NeuralNet)
+
 
 single = True
 if single:

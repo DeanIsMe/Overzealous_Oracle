@@ -9,6 +9,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas
 
+# df: dataframe
+# dfs: dataframes
+# There is one dataframe per ticker/coin
+
 #==========================================================================
 def PlotOutData(r, prices, output, sample=0, tRange=0):
     # Plot output
@@ -318,6 +322,7 @@ def AddRsi(r, dfs):
 #==========================================================================
 def AddEma(r, dfs):
     """
+    ## Exponential Moving Average
     Add Exponential Moving Averages to the data frames
     """
     for df in dfs:
@@ -332,6 +337,7 @@ def AddEma(r, dfs):
 #==========================================================================
 def AddLogDiff(r, dfs):
     """
+    ## Diff Log Series
     Add a logarithmic differential series to the data frames
     """
     for df in dfs:
@@ -345,9 +351,9 @@ def AddLogDiff(r, dfs):
 #==============================================================================
 def ScaleLoadedData(dfs):
     """
-    # dfs must be a list of DataFrames
-    # Each DataFrame input should have 4 columns: close, high, low, volume
-    # This functions prepares the data for entry into a neural network
+    dfs must be a list of DataFrames
+    Each DataFrame input should have 4 columns: close, high, low, volume
+    This functions prepares the data for entry into a neural network
     """
     
     ##22/10/2017: normalising each input sequence was shown to be best
