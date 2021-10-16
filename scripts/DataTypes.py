@@ -12,8 +12,8 @@ different)
 
 import datetime
 
-class TrainData():
-    # Saves data each epoch as the model trains
+class TrainMetrics():
+    # Saves metrics each epoch as the model trains
     def __init__(self):
         # Capturing Training
         self.lossTrain = []
@@ -37,7 +37,7 @@ class ModelResult():
         self.inFeatureCount = 0
         self.outFeatureCount = 0
                
-        self.trainData = 0 # See class above
+        self.trainMetrics = 0 # See class above
         self.inDataColumns = []
         self.coinList = []
         

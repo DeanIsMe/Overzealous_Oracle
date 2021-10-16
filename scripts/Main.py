@@ -15,6 +15,8 @@ import InputData
 import matplotlib.pyplot as plt
 import time
 
+from scripts.DataTypes import TrainMetrics
+
 def PrintDataLimits(inData, outData):
     print("\r\ninData MAX:")
     print(np.max(inData, axis=1))
@@ -55,7 +57,7 @@ outData = outData / np.percentile(outData, 90) * 1
 PrintDataLimits(inData, outData)
 
 (trainX, trainY, valX, valY, testX, testY, tInd) = SplitData(config, inData, outData)
-model, trainData, trainTime = MakeAndTrainNetwork(config, trainX, trainY, valX, valY)
+model, trainMetrics, trainTime = MakeAndTrainNetwork(config, trainX, trainY, valX, valY)
 TestNetwork(config, model, inSeq, inData, outData, tInd)
 
 # Batch Run
@@ -92,6 +94,6 @@ TestNetwork(config, model, inSeq, inData, outData, tInd)
 #    trainTime2[run2] = trainTime
 #
 #namePrefix = 'IOSmallScale'
-#np.save(namePrefix + 'TrainData', trainD2)
+#np.save(namePrefix + 'TrainMetrics', trainD2)
 #np.save(namePrefix + 'Err', testErr2)
 #np.save(namePrefix + 'TrainTime', trainTime2)

@@ -9,7 +9,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import numbers
-from NeuralNet import PlotTrainData
+from NeuralNet import PlotTrainMetrics
 
 
 # A GRID OF PLOTS
@@ -36,7 +36,7 @@ for idx1 in range(bat1Len):
         ax = plt.gca()
         rowAx.append(ax)
         
-        (thisMaxY, thisMinY) = PlotTrainData(r, True)
+        (thisMaxY, thisMinY) = PlotTrainMetrics(r, True)
         maxY = max(maxY, thisMaxY)
         minY = min(minY, thisMinY)
         

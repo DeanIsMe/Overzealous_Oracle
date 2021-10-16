@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import keras
-from DataTypes import TrainData
+from DataTypes import TrainMetrics
 import pandas as pd
 import keras.callbacks
 import time
@@ -32,7 +32,7 @@ class ValidationCb(keras.callbacks.Callback):
     
 
             
-    def setup(self, xData, yTarget, trainData, patience):
+    def setup(self, xData, yTarget, trainMetrics, patience):
         self.xData = np.array(xData) # DOCUMENT THESE !@#$
         self.yTarget = np.array(yTarget) # Target of predictions
         self.targetSize = yTarget.size # Number of points
@@ -55,7 +55,7 @@ class ValidationCb(keras.callbacks.Callback):
         self.avgDiffLower = avgDiffTarget / 10 # Below this, the
         # penalty is a maximum
   
-        self.trainData = trainData # Links to the r.trainData
+        self.trainMetrics = trainMetrics # Links to the r.trainMetrics
         # Tracking the best result:
         self.bestFitness = 0
         self.bestWeights = []
@@ -68,8 +68,8 @@ class ValidationCb(keras.callbacks.Callback):
         self.stopped_epoch = 0
            
     def on_epoch_end(self, epoch, logs={}):
-        self.trainData.curEpoch += 1
-        thisEpoch = self.trainData.curEpoch
+        self.trainMetrics.curEpoch += 1
+        thisEpoch = self.trainMetrics.curEpoch
         predictY = self.model.predict(self.xData, batch_size=100)
         err = predictY[:,-self.targetTimeSteps:,:] - self.yTarget
         
@@ -103,11 +103,11 @@ class ValidationCb(keras.callbacks.Callback):
         elif (thisEpoch%10)==0:
             print('Epoch {:2} - Fitness= {:7.3f} - DiffScaler= {:5.3f}'.format(thisEpoch, fitness, penalty))
         
-        self.trainData.absErrVal.append(val_abs_err)
-        self.trainData.lossVal.append(val_sq_err)
-        self.trainData.lossTrain.append(logs['loss'])
-        self.trainData.absErrTrain.append(logs['mean_absolute_error'])
-        self.trainData.fitness.append(fitness)
+        self.trainMetrics.absErrVal.append(val_abs_err)
+        self.trainMetrics.lossVal.append(val_sq_err)
+        self.trainMetrics.lossTrain.append(logs['loss'])
+        self.trainMetrics.absErrTrain.append(logs['mean_absolute_error'])
+        self.trainMetrics.fitness.append(fitness)
         
         # Early stopping
         if self.patience != 0:
@@ -181,7 +181,7 @@ def _CalcIndices(tMax, dataRatios, exclude):
     return tOut
 
 #==========================================================================
-def PlotTrainData(r, subplot=False):
+def PlotTrainMetrics(r, subplot=False):
     #PLot Training
     if not subplot:
         plt.figure()
@@ -191,16 +191,16 @@ def PlotTrainData(r, subplot=False):
     
     lines = []
     lines.append({'label':'TrainSq',
-                  'data':r.neutralTrainSqErr / r.trainData.lossTrain,
+                  'data':r.neutralTrainSqErr / r.trainMetrics.lossTrain,
                   'ls':'-', 'color':'C0'})
     lines.append({'label':'ValSq',
-                  'data':r.neutralValSqErr / r.trainData.lossVal,
+                  'data':r.neutralValSqErr / r.trainMetrics.lossVal,
                   'ls':'-', 'color':'C1'})
     lines.append({'label':'TrainAbs',
-                  'data':r.neutralTrainAbsErr / r.trainData.absErrTrain,
+                  'data':r.neutralTrainAbsErr / r.trainMetrics.absErrTrain,
                   'ls':':', 'color':'C0'})
     lines.append({'label':'ValAbs',
-                  'data':r.neutralValAbsErr / r.trainData.absErrVal,
+                  'data':r.neutralValAbsErr / r.trainMetrics.absErrVal,
                   'ls':':', 'color':'C1'})
     handles = []
     for line in lines:
@@ -305,7 +305,7 @@ def MakeNetwork(r):
     
     r.model.summary()
     
-    r.trainData = TrainData()
+    r.trainMetrics = TrainMetrics()
     
     return
 
@@ -325,9 +325,9 @@ def TrainNetwork(r, inData, outData, final=True):
     validationCb = ValidationCb()
     valI = r.tInd['val'] # Validation indices
     startPredict = max(0, valI.min()-100) # This number of time steps are used to build state before starting predictions
-    validationCb.setup(inData[:,startPredict:valI.max()+1,:], outData[:,valI,:], r.trainData, r.config['earlyStopping'])
+    validationCb.setup(inData[:,startPredict:valI.max()+1,:], outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'])
         
-    epochsLeft = r.config['epochs'] - r.trainData.curEpoch
+    epochsLeft = r.config['epochs'] - r.trainMetrics.curEpoch
     if epochsLeft == 0:
         print('\r\n\n\nERROR! NO EPOCHS REMAINING ON TRAINING!')
         return
@@ -362,7 +362,7 @@ def TrainNetwork(r, inData, outData, final=True):
     end = time.time()
     r.trainTime = end-start
     print('Training Time: {0}'.format(r.trainTime))
-    PlotTrainData(r)
+    PlotTrainMetrics(r)
     
     if final and r.config['revertToBest']:
         if validationCb.bestEpoch > 0:
@@ -387,11 +387,11 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     testEpochs = 10
     print('\nPRUNED NETWORK. Making {} networks for {} epochs.'.format(options, testEpochs))
     models = [0] * options
-    trainData = [0] * options
+    trainMetrics = [0] * options
     for i in range(options):
         MakeNetwork(r)
         models[i] = r.model
-        trainData[i] = r.trainData
+        trainMetrics[i] = r.trainMetrics
     # Perform initial training to test each model
     epochBackup = r.config['epochs']
     r.config['epochs'] = testEpochs
@@ -403,19 +403,19 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     for i in range(options):
         print('Training model {} out of {}'.format(i, options))
         r.model = models[i]
-        r.trainData = trainData[i]
+        r.trainMetrics = trainMetrics[i]
         TrainNetwork(r, inData, outData, final=False)
         
-        lossTrain[i] = r.trainData.lossTrain[-1]
-        lossVal[i] = r.trainData.lossVal[-1]
-        fitness[i] = np.max(r.trainData.fitness)
+        lossTrain[i] = r.trainMetrics.lossTrain[-1]
+        lossVal[i] = r.trainMetrics.lossVal[-1]
+        fitness[i] = np.max(r.trainMetrics.fitness)
         # gradSum is a sum of the last 5 gradients (from the last 6 values)
         # of the log of the loss.
         # Should be negative. More negative = better
         # The most recent is weighted more than the first
         pastVal = min(6,testEpochs)
-        trainGradSum[i] = np.sum(np.diff(np.log(r.trainData.lossTrain[-pastVal:])) * np.linspace(1,2,num=pastVal-1))
-        valGradSum[i] = np.sum(np.diff(np.log(r.trainData.lossVal[-pastVal:])) * np.linspace(1,2,num=pastVal-1))
+        trainGradSum[i] = np.sum(np.diff(np.log(r.trainMetrics.lossTrain[-pastVal:])) * np.linspace(1,2,num=pastVal-1))
+        valGradSum[i] = np.sum(np.diff(np.log(r.trainMetrics.lossVal[-pastVal:])) * np.linspace(1,2,num=pastVal-1))
        
   
     # PICK THE BEST MODEL
@@ -453,7 +453,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     # Train on the best model
     r.config['epochs'] = epochBackup
     r.model = models[bestI]
-    r.trainData = trainData[bestI]
+    r.trainMetrics = trainMetrics[bestI]
     TrainNetwork(r, inData, outData)
     return
     
