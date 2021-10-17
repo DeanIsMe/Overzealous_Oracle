@@ -24,6 +24,17 @@ class TrainMetrics():
         self.curEpoch = 0 # Counted from the start of this model creation,
         
         
+class FeedLoc():
+    """
+    ## FeedLoc is an enum
+    It represents the location where the feature will be fed into the network
+    """
+    conv = 3
+    lstm = 2
+    dense = 1
+    null = -1
+    NAMES = {conv:'conv', lstm:'lstm', dense:'dense', null:'null'}
+    LIST = [conv, lstm, dense]
 
 class ModelResult():
     # Saves all data about a model, including training and testing

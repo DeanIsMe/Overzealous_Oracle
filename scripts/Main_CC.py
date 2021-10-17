@@ -15,8 +15,9 @@ Created on Dec 17  2017
 
 %matplotlib widget
 
-
 import os
+os.chdir(os.path.dirname(os.path.dirname(__file__)))
+print(f'Working directory is "{os.getcwd()}"')
 
 import numpy as np
 import keras
@@ -39,8 +40,11 @@ from datetime import datetime
 
 from keras import regularizers
 
+from DataTypes import FeedLoc
+
 
 def PrintDataLimits(inData, outData):
+    # !@#$ TODO UPDATE FOR NEW IN DATA FORMAT
     print('Input Columns:')
     print(r.inDataColumns)
     print("\r\ninData 90th Percentile:")
@@ -65,8 +69,7 @@ def PrintDataLimits(inData, outData):
 #    r.coinList = coinList
 #    r.inDataColumns = dfs[0].columns
 
-os.chdir(os.path.dirname(os.path.dirname(__file__))) # E
-print(f'Working directory is "{os.getcwd()}"')
+
 
 KB.clear_session()
 
@@ -127,6 +130,46 @@ inData = np.zeros((r.sampleCount, r.timesteps, r.inFeatureCount))
 for i, df in enumerate(dfs):
     inData[i] = np.array(df)
 
+
+# EXPERIMENTING FROM HERE
+# Based on the config and the list of features, determine the feed location for each feature
+r.SPLIT_IN_TEST = True
+if r.SPLIT_IN_TEST:
+    featureCount = dict()
+    for loc in FeedLoc.LIST:
+        featureCount[loc] = 0
+
+    featureList = dfs[0].columns
+    feedLoc = [FeedLoc.null] * len(featureList) # The feed location for each item in the list
+    for i, feature in enumerate(featureList):
+        thisFeedLoc = FeedLoc.null
+        for featureMatch in r.config['feedLoc']:
+            if featureMatch in feature:
+                thisFeedLoc = r.config['feedLoc'][featureMatch]
+                break
+        if thisFeedLoc == FeedLoc.null:
+            thisFeedLoc = FeedLoc.conv # The default
+            print(f"WARNING! Feature '{feature}' did not match to any options in r.config['feedLoc']")
+        featureCount[thisFeedLoc] += 1
+        feedLoc[i] = thisFeedLoc
+
+    print("The feed locations for all data features are:")
+    for loc in featureCount:
+        print(f"Feed location '{FeedLoc.NAMES[loc]}': {[featureList[i] for i,loc2 in enumerate(feedLoc) if loc2 == loc]}")
+
+    inData = dict()
+    for loc in FeedLoc.LIST:
+        inData[loc] = np.zeros((r.sampleCount, r.timesteps, featureCount[loc]))
+        for s, df in enumerate(dfs):
+            inData[loc][s] = np.array(df.iloc[:,[i for i,loc2 in enumerate(feedLoc) if loc2 == loc]])
+    
+    r.inFeatureCount = featureCount
+
+
+# EXPERIMENTING END
+
+
+
 # OUTPUT DATA
 outData = FE.CalcFavScores(r.config, prices)
 r.outFeatureCount = outData.shape[-1]
@@ -139,13 +182,18 @@ for i in np.arange(r.outFeatureCount):
 # Print out data
 FE.PlotOutData(r, prices, outData, 0)
 
-print(f'Input data shape = {inData.shape} (samples={inData.shape[0]}, timeSteps={inData.shape[1]}, features={inData.shape[0]})')
+if r.SPLIT_IN_TEST:
+    inDataSamples, inDataTimeSteps, _ = next(iter(inData.values())).shape
+    print(f'Input data (samples={inDataSamples}, timeSte bvps={inDataTimeSteps})')
+else:
+    pass
+
 print(f'Output data shape = {outData.shape}')
 
 # %% Train!
 
 # To reload the NeuralNet function for debugging:
-if 0:
+if 1:
     print('Reloading NeuralNet')
     import importlib
     importlib.reload(NeuralNet)
@@ -165,9 +213,16 @@ if single:
     r.config['outScale'] = 1
     r.config['revertToBest'] = True
     
-    thisInData = inData * r.config['inScale']
+    
+    if r.SPLIT_IN_TEST:
+        thisInData = dict()
+        for loc in FeedLoc.LIST:
+            thisInData[loc] = inData[loc] * r.config['inScale']
+    else:
+        thisInData = inData * r.config['inScale']
+    
     thisOutData = outData * r.config['outScale']
-    PrintDataLimits(thisInData, thisOutData)
+    #PrintDataLimits(thisInData, thisOutData)
     prunedNetwork = False
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)
@@ -177,6 +232,7 @@ if single:
 
     NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
 
+    keras.utils.plot_model(r.model, show_shapes=True)
 else:
     # *****************************************************************************
     # Batch Run
@@ -211,7 +267,7 @@ else:
         # Change for batch2
         
         for idx1, val1 in enumerate(bat1Val):
-            KB.clear_session()
+            KB.clear_session() 
             results[idx2][idx1] = copy.deepcopy(startR)
             r = results[idx2][idx1]
             
@@ -316,4 +372,3 @@ else:
     #Go to sleep
     print('Going to sleep...')
     os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
-# %%

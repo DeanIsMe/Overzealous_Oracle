@@ -16,6 +16,8 @@ import time
 import os
 from ClockworkRNN import CWRNN
 from keras.callbacks import EarlyStopping
+
+from scripts.DataTypes import FeedLoc
        
 #==========================================================================
 class ValidationCb(keras.callbacks.Callback):
@@ -30,10 +32,9 @@ class ValidationCb(keras.callbacks.Callback):
     def __init__(self):
         pass
     
-
-            
+    
     def setup(self, xData, yTarget, trainMetrics, patience):
-        self.xData = np.array(xData) # DOCUMENT THESE !@#$
+        self.xData = xData # DOCUMENT THESE !@#$
         self.yTarget = np.array(yTarget) # Target of predictions
         self.targetSize = yTarget.size # Number of points
         self.targetTimeSteps = yTarget.shape[-2]
@@ -54,7 +55,7 @@ class ValidationCb(keras.callbacks.Callback):
         self.avgDiffUpper = avgDiffTarget / 4 # above this, there's no penalisation
         self.avgDiffLower = avgDiffTarget / 10 # Below this, the
         # penalty is a maximum
-  
+        
         self.trainMetrics = trainMetrics # Links to the r.trainMetrics
         # Tracking the best result:
         self.bestFitness = 0
@@ -256,7 +257,7 @@ def MakeNetwork(r):
     
     # Keras functional API
     # Input
-    main_input = keras.layers.Input(shape=(None, r.inFeatureCount), name='main_input')
+    conv_feed = keras.layers.Input(shape=(None, r.inFeatureCount[FeedLoc.conv]), name='conv_feed')
 
     # Make conv layers
     convLayers = []
@@ -267,16 +268,22 @@ def MakeNetwork(r):
             dilation_rate=convConf['convDilation'][i],
             # input_shape=(None, r.inFeatureCount),
             use_bias=True, padding='causal',
-            name=f"conv1d_{i}_{convConf['convDilation'][i]}x")(main_input))
+            name=f"conv1d_{i}_{convConf['convDilation'][i]}x")(conv_feed))
 
     if convConf['layerCount'] == 0:
-        lstm_feed = main_input
+        conv_out = conv_feed
     elif convConf['layerCount'] == 1:
-        lstm_feed = convLayers[0]
+        conv_out = convLayers[0]
     elif convConf['layerCount'] > 1:
-        lstm_feed = keras.layers.concatenate(convLayers)
+        conv_out = keras.layers.concatenate(convLayers)
+
+
 
     # Make the LSTM layers
+    # LSTM input
+    lstm_feed = keras.layers.Input(shape=(None, r.inFeatureCount[FeedLoc.lstm]), name='lstm_feed')
+    lstm_input = keras.layers.concatenate([conv_out, lstm_feed])
+
     lstmLayerCount = len(r.config['neurons'])
     
     for i, neurons in enumerate(r.config['neurons']):
@@ -292,12 +299,16 @@ def MakeNetwork(r):
         }
         # if is_first_layer and convLayerCount == 0:
         #     lstm_args['input_shape'] = (None, r.inFeatureCount)
+        this_input = lstm_input if is_first_layer else lstm_out
+        lstm_out = keras.layers.LSTM(**lstm_args)(this_input)
+    
+    # Dense layers
+    # Dense input
+    dense_feed = keras.layers.Input(shape=(None, r.inFeatureCount[FeedLoc.dense]), name='dense_feed')
+    dense_input = keras.layers.concatenate([lstm_out, dense_feed])
 
-        lstm_feed = keras.layers.LSTM(**lstm_args)(lstm_feed)
-
-    # Final output layer
-    main_output = keras.layers.Dense(r.outFeatureCount, name='final_output')(lstm_feed)
-    r.model = keras.models.Model(inputs=[main_input], outputs=[main_output])
+    main_output = keras.layers.Dense(r.outFeatureCount, name='final_output')(dense_input)
+    r.model = keras.models.Model(inputs=[conv_feed, lstm_feed, dense_feed], outputs=[main_output])
 
     # mape = mean absolute percentage error
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error'])
@@ -306,7 +317,7 @@ def MakeNetwork(r):
     r.model.summary()
     
     r.trainMetrics = TrainMetrics()
-    
+
     return
 
 
@@ -316,7 +327,8 @@ def TrainNetwork(r, inData, outData, final=True):
     final == True indicates that this is the final call for TrainNetwork for
     this model.
     """
-    r.tInd = _CalcIndices(inData.shape[-2], r.config['dataRatios'], r.config['excludeRecentDays'])
+
+    r.tInd = _CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentDays'])
     
     #Callbacks
     callbacks = []
@@ -325,7 +337,8 @@ def TrainNetwork(r, inData, outData, final=True):
     validationCb = ValidationCb()
     valI = r.tInd['val'] # Validation indices
     startPredict = max(0, valI.min()-100) # This number of time steps are used to build state before starting predictions
-    validationCb.setup(inData[:,startPredict:valI.max()+1,:], outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'])
+    valInDataPrepared = [inData[FeedLoc.conv][:,startPredict:valI.max()+1,:], inData[FeedLoc.lstm][:,startPredict:valI.max()+1,:], inData[FeedLoc.dense][:,startPredict:valI.max()+1,:]]
+    validationCb.setup(valInDataPrepared, outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'])
         
     epochsLeft = r.config['epochs'] - r.trainMetrics.curEpoch
     if epochsLeft == 0:
@@ -342,8 +355,8 @@ def TrainNetwork(r, inData, outData, final=True):
 #    callbacks.append(checkpoint)
 
 #    callbacks += [keras.callbacks.TensorBoard(log_dir='./logs2', histogram_freq=0, batch_size=32, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)]
-    print('\nStarting training. Max {} epochs'.format(epochsLeft));
-    trainX = inData[:, r.tInd['train']]
+    print('\nStarting training. Max {} epochs'.format(epochsLeft))
+    trainX = [inData[loc][:,r.tInd['train'],:] for loc in FeedLoc.LIST]
     trainY = outData[:, r.tInd['train']]
     valY = outData[:, r.tInd['val']]
     
@@ -353,10 +366,9 @@ def TrainNetwork(r, inData, outData, final=True):
     r.neutralValSqErr = np.sum(np.abs(valY)**2) / valY.size
     
     start = time.time()
-    (samples, trainSteps, inFeatures) = trainX.shape
 
     hist = r.model.fit(trainX, trainY, epochs=epochsLeft, 
-                     batch_size=samples, shuffle=True,
+                     batch_size=r.sampleCount, shuffle=True,
                      verbose=0, callbacks=callbacks)
     
     end = time.time()
@@ -459,15 +471,15 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     
 #==========================================================================
 def TestNetwork(r, priceData, inData, outData):
-    tPlot = np.r_[0:inData.shape[-2]] # Range of output plot (all data)
-    samples = inData.shape[-3]
+    tPlot = np.r_[0:r.timesteps] # Range of output plot (all data)
     if (r.config['dataRatios'][2] > 0.1):
         print('WARNING! TestNetwork uses Val Data as the test data, but Test Data also exists. ')
         print(r.config['dataRatios'])
     testI = r.tInd['val'] # Validation indices used as test
     
     #Predictions
-    predictY = r.model.predict(inData, batch_size=samples)
+    inDataForModel = [inData[FeedLoc.conv], inData[FeedLoc.lstm], inData[FeedLoc.dense]]
+    predictY = r.model.predict(inDataForModel, batch_size=r.sampleCount)
     
     def _PlotOutput(priceData, out, predict, tRange, sample):
         """Plot a single output feature of 1 sample"""
@@ -506,7 +518,7 @@ def TestNetwork(r, priceData, inData, outData):
     
     r.prediction = predictY
     # Plot prediction
-    for s in range(samples):
+    for s in range(r.sampleCount):
         _PlotOutput(priceData, outData, predictY, tPlot, s)
     
     r.testAbsErr = np.sum(np.abs(predictY[:,testI,:] - outData[:,testI,:])) / predictY[:,testI,:].size

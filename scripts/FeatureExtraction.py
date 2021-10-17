@@ -36,7 +36,7 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
     plt.title('Output for: {}'.format(r.coinList[sample]))
     plt.show()
     
-    #==========================================================================
+#==========================================================================
 def PlotInData(r, dfs, sample=0, tRange=0):
     # Plot output
     if type(tRange) == int:

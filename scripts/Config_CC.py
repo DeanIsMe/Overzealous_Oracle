@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Cryptocurrency configuration
 
+from DataTypes import FeedLoc
+
 #==============================================================================
 # GetConfig
 # Defines and returns the configuration dict
@@ -90,5 +92,19 @@ def GetConfig():
     # and results
     config['inScale'] = 1
     config['outScale'] = 1
+
+    # feedLoc indicates the location at which the data feature will be fed into the network
+    config['feedLoc'] = {
+        'high' : FeedLoc.dense,
+        'low' : FeedLoc.dense,
+        'volume' : FeedLoc.lstm,
+
+        'close' : FeedLoc.conv,
+        'ema' : FeedLoc.conv,
+        'logDiff' : FeedLoc.conv,
+        'vix' : FeedLoc.dense,
+        'RSI' : FeedLoc.lstm,
+    }
+
     
     return config
