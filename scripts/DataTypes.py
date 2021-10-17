@@ -27,14 +27,17 @@ class TrainMetrics():
 class FeedLoc():
     """
     ## FeedLoc is an enum
-    It represents the location where the feature will be fed into the network
+    The variable represents the location where the feature will be fed into the network
+    The value is the index in the list of inputs
     """
-    conv = 3
-    lstm = 2
-    dense = 1
+    conv = 2
+    lstm = 1
+    dense = 0
     null = -1
+    LEN = 3
     NAMES = {conv:'conv', lstm:'lstm', dense:'dense', null:'null'}
     LIST = [conv, lstm, dense]
+    
 
 class ModelResult():
     # Saves all data about a model, including training and testing
@@ -49,8 +52,11 @@ class ModelResult():
         self.outFeatureCount = 0
                
         self.trainMetrics = 0 # See class above
-        self.inDataColumns = []
         self.coinList = []
+
+        self.inFeatureList = None
+        self.feedLocFeatures = None
+        self.tInd = None # Dictionary with keys: 'train', 'val', 'test'. Values are the time indices in each set
         
         self.model = None
         self.kerasOpt = 0 # 0 = Adam. Otherwise, set to an Optimizer
@@ -71,5 +77,4 @@ class ModelResult():
         self.testAbsErr = None
         self.neutralTestAbsErr = None # test error if output was 'always neutral'
         self.testScore = None # neutralTestAbsErr / testAbsErr
-        self.tInd = None # Dictionary with keys: 'train', 'val', 'test'. Values are the time indices in each set
         

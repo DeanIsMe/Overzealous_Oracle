@@ -44,30 +44,17 @@ from DataTypes import FeedLoc
 
 
 def PrintDataLimits(inData, outData):
-    # !@#$ TODO UPDATE FOR NEW IN DATA FORMAT
     print('Input Columns:')
-    print(r.inDataColumns)
+    print(r.inFeatureList)
     print("\r\ninData 90th Percentile:")
-    print(np.percentile(inData, 90, axis=1))
+    print([np.percentile(inData[loc], 90, axis=1) for loc in FeedLoc.LIST])
     print("\r\ninData 10th Percentile:")
-    print(np.percentile(inData, 10, axis=1))
+    print([np.percentile(inData[loc], 10, axis=1) for loc in FeedLoc.LIST])
     
     print("\r\noutData 90th Percentile:")
     print(np.percentile(outData, 90, axis=1))
     print("\r\noutData 10th Percentile:")
     print(np.percentile(outData, 10, axis=1))
-
-    
-#def FillResultSetup(r):
-#    # Fills basic information into the result class r
-#    # r is ModelResult()
-#    r.sampleCount = samples
-#    r.timesteps  = timesteps
-#    r.inFeatureCount = inFeatures
-#    r.outFeatureCount = outFeatures
-#    r.config = copy.deepcopy(config)
-#    r.coinList = coinList
-#    r.inDataColumns = dfs[0].columns
 
 
 
@@ -119,55 +106,43 @@ FE.AddRsi(r, dfs)
 FE.AddEma(r, dfs)
 FE.ScaleLoadedData(dfs) # High, Low, etc
 
-r.inDataColumns = list(dfs[0].columns)
+r.inFeatureList = list(dfs[0].columns)
 r.inFeatureCount = dfs[0].shape[-1]
 
 # Plot a small sample of the input data
 FE.PlotInData(r, dfs, 0, [0, 50])
 
-# Convert to a numpy array
-inData = np.zeros((r.sampleCount, r.timesteps, r.inFeatureCount))
-for i, df in enumerate(dfs):
-    inData[i] = np.array(df)
-
-
-# EXPERIMENTING FROM HERE
 # Based on the config and the list of features, determine the feed location for each feature
-r.SPLIT_IN_TEST = True
-if r.SPLIT_IN_TEST:
-    featureCount = dict()
-    for loc in FeedLoc.LIST:
-        featureCount[loc] = 0
+featureList = dfs[0].columns
 
-    featureList = dfs[0].columns
-    feedLoc = [FeedLoc.null] * len(featureList) # The feed location for each item in the list
-    for i, feature in enumerate(featureList):
-        thisFeedLoc = FeedLoc.null
-        for featureMatch in r.config['feedLoc']:
+# INPUT DATA
+# inData has 3 separate arrays for 3 separate feed locations
+inData = [[] for i in range(FeedLoc.LEN)]
+feedLocFeatures = [[] for i in range(FeedLoc.LEN)]
+
+# Determine which features go into which feed locations
+for loc in FeedLoc.LIST:
+    # Find the features that are in this feed location
+    feedLocFeatures[loc] = np.zeros_like(featureList, dtype=np.bool)
+    for fidx, feature in enumerate(featureList):
+        for featureMatch in r.config['feedLoc'][loc]:
             if featureMatch in feature:
-                thisFeedLoc = r.config['feedLoc'][featureMatch]
+                feedLocFeatures[loc][fidx] = True
                 break
-        if thisFeedLoc == FeedLoc.null:
-            thisFeedLoc = FeedLoc.conv # The default
-            print(f"WARNING! Feature '{feature}' did not match to any options in r.config['feedLoc']")
-        featureCount[thisFeedLoc] += 1
-        feedLoc[i] = thisFeedLoc
 
-    print("The feed locations for all data features are:")
-    for loc in featureCount:
-        print(f"Feed location '{FeedLoc.NAMES[loc]}': {[featureList[i] for i,loc2 in enumerate(feedLoc) if loc2 == loc]}")
+# Make the input data
+for loc in FeedLoc.LIST:
+    # Make the input data 3D array for this feed location
+    inData[loc] = np.zeros((r.sampleCount, r.timesteps, np.sum(feedLocFeatures[loc])))
+    for s, df in enumerate(dfs):
+        inData[loc][s] = np.array(df.iloc[:,feedLocFeatures[loc]])
 
-    inData = dict()
-    for loc in FeedLoc.LIST:
-        inData[loc] = np.zeros((r.sampleCount, r.timesteps, featureCount[loc]))
-        for s, df in enumerate(dfs):
-            inData[loc][s] = np.array(df.iloc[:,[i for i,loc2 in enumerate(feedLoc) if loc2 == loc]])
-    
-    r.inFeatureCount = featureCount
+r.feedLocFeatures = feedLocFeatures
 
-
-# EXPERIMENTING END
-
+# Print feed locations for all input data
+print("The input feed locations for the features are:")
+for loc in FeedLoc.LIST:
+    print(f"Feed location '{FeedLoc.NAMES[loc]}': {list(featureList[feedLocFeatures[loc]])}")
 
 
 # OUTPUT DATA
@@ -182,11 +157,7 @@ for i in np.arange(r.outFeatureCount):
 # Print out data
 FE.PlotOutData(r, prices, outData, 0)
 
-if r.SPLIT_IN_TEST:
-    inDataSamples, inDataTimeSteps, _ = next(iter(inData.values())).shape
-    print(f'Input data (samples={inDataSamples}, timeSte bvps={inDataTimeSteps})')
-else:
-    pass
+print(f'Input data (samples={r.sampleCount}, timeSteps={r.timesteps})')
 
 print(f'Output data shape = {outData.shape}')
 
@@ -214,15 +185,11 @@ if single:
     r.config['revertToBest'] = True
     
     
-    if r.SPLIT_IN_TEST:
-        thisInData = dict()
-        for loc in FeedLoc.LIST:
-            thisInData[loc] = inData[loc] * r.config['inScale']
-    else:
-        thisInData = inData * r.config['inScale']
+    # Scale the input and output data
+    thisInData = [arr * r.config['inScale'] for arr in inData]
     
     thisOutData = outData * r.config['outScale']
-    #PrintDataLimits(thisInData, thisOutData)
+    PrintDataLimits(thisInData, thisOutData)
     prunedNetwork = False
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)
@@ -322,7 +289,7 @@ else:
 #            FE.AddEma(r, dfs)
 #            FE.ScaleLoadedData(dfs) # High, Low, etc
 #            
-#            r.inDataColumns = list(dfs[0].columns)
+#            r.inFeatureList = list(dfs[0].columns)
 #            r.inFeatureCount = dfs[0].shape[-1]
 #            
 #            # Convert to a numpy array

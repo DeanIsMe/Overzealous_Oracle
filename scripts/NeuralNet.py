@@ -257,7 +257,7 @@ def MakeNetwork(r):
     
     # Keras functional API
     # Input
-    conv_feed = keras.layers.Input(shape=(None, r.inFeatureCount[FeedLoc.conv]), name='conv_feed')
+    conv_feed = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.conv])), name='conv_feed')
 
     # Make conv layers
     convLayers = []
@@ -281,7 +281,7 @@ def MakeNetwork(r):
 
     # Make the LSTM layers
     # LSTM input
-    lstm_feed = keras.layers.Input(shape=(None, r.inFeatureCount[FeedLoc.lstm]), name='lstm_feed')
+    lstm_feed = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
     lstm_input = keras.layers.concatenate([conv_out, lstm_feed])
 
     lstmLayerCount = len(r.config['neurons'])
@@ -304,7 +304,7 @@ def MakeNetwork(r):
     
     # Dense layers
     # Dense input
-    dense_feed = keras.layers.Input(shape=(None, r.inFeatureCount[FeedLoc.dense]), name='dense_feed')
+    dense_feed = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
     dense_input = keras.layers.concatenate([lstm_out, dense_feed])
 
     main_output = keras.layers.Dense(r.outFeatureCount, name='final_output')(dense_input)
@@ -337,8 +337,9 @@ def TrainNetwork(r, inData, outData, final=True):
     validationCb = ValidationCb()
     valI = r.tInd['val'] # Validation indices
     startPredict = max(0, valI.min()-100) # This number of time steps are used to build state before starting predictions
-    valInDataPrepared = [inData[FeedLoc.conv][:,startPredict:valI.max()+1,:], inData[FeedLoc.lstm][:,startPredict:valI.max()+1,:], inData[FeedLoc.dense][:,startPredict:valI.max()+1,:]]
-    validationCb.setup(valInDataPrepared, outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'])
+
+    valInData = [arr[:,startPredict:valI.max()+1,:] for arr in inData]
+    validationCb.setup(valInData, outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'])
         
     epochsLeft = r.config['epochs'] - r.trainMetrics.curEpoch
     if epochsLeft == 0:
@@ -356,7 +357,8 @@ def TrainNetwork(r, inData, outData, final=True):
 
 #    callbacks += [keras.callbacks.TensorBoard(log_dir='./logs2', histogram_freq=0, batch_size=32, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)]
     print('\nStarting training. Max {} epochs'.format(epochsLeft))
-    trainX = [inData[loc][:,r.tInd['train'],:] for loc in FeedLoc.LIST]
+    
+    trainX = [arr[:,r.tInd['train'],:] for arr in inData]
     trainY = outData[:, r.tInd['train']]
     valY = outData[:, r.tInd['val']]
     
@@ -478,8 +480,7 @@ def TestNetwork(r, priceData, inData, outData):
     testI = r.tInd['val'] # Validation indices used as test
     
     #Predictions
-    inDataForModel = [inData[FeedLoc.conv], inData[FeedLoc.lstm], inData[FeedLoc.dense]]
-    predictY = r.model.predict(inDataForModel, batch_size=r.sampleCount)
+    predictY = r.model.predict(inData, batch_size=r.sampleCount)
     
     def _PlotOutput(priceData, out, predict, tRange, sample):
         """Plot a single output feature of 1 sample"""
