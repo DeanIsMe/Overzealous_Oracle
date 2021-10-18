@@ -37,24 +37,38 @@ import time
 import Crypto_GetData as cgd
 import pickle
 from datetime import datetime
+import pandas as pd
 
 from keras import regularizers
 
 from DataTypes import FeedLoc
 
 
-def PrintDataLimits(inData, outData):
-    print('Input Columns:')
+def PrintOutDataRanges(r, outData):
     print(r.inFeatureList)
-    print("\r\ninData 90th Percentile:")
-    print([np.percentile(inData[loc], 90, axis=1) for loc in FeedLoc.LIST])
-    print("\r\ninData 10th Percentile:")
-    print([np.percentile(inData[loc], 10, axis=1) for loc in FeedLoc.LIST])
-    
     print("\r\noutData 90th Percentile:")
     print(np.percentile(outData, 90, axis=1))
     print("\r\noutData 10th Percentile:")
     print(np.percentile(outData, 10, axis=1))
+
+
+def PrintInDataRanges(dfs):
+    # Print a table. Each column is a feature, each row is a sample
+    quantiles = [0.90, 0.10]
+    np.zeros((len(dfs), len(dfs[0].columns)))
+    values = []
+
+    for i, q in enumerate(quantiles):
+        series = []
+        for df in dfs:
+            ser = df.quantile(q=q)
+            ser.name = df.name
+            series.append(ser)
+        dfq = pd.DataFrame(series)
+        dfq.name = q
+        values.append(dfq)
+        print(f'Input data {q:.2f} quantile')
+        print(dfq)
 
 
 
@@ -69,7 +83,7 @@ r.config = GetConfig()
 
 #r.coinList = ['ETH','BTC','BCH','XRP','LTC','XLM','NEO','EOS','XEM', 'IOT','DOGE','ADA','POT','VET','XLM','ETC']
 #r.coinList = ['ETH','BTC','BCH','XRP','LTC']
-r.coinList = ['BTC', 'ETH']
+r.coinList = ['ETH', 'ETC']
 #r.coinList = ['ETH']
 
 print('Done import')
@@ -90,6 +104,12 @@ else:
     filehandler = open('./indata/dfs_2coins_4320hours_2021-05-09.pickle', 'rb')
     dfs = pickle.load(filehandler)
     filehandler.close()
+
+
+# TODO fix this. Improve data saving (save coin names with the data)
+for i, df in enumerate(dfs):
+    df.name = r.coinList[i]
+
 print('Got data')
 
 # %% Prep the training data
@@ -108,6 +128,8 @@ FE.ScaleLoadedData(dfs) # High, Low, etc
 
 r.inFeatureList = list(dfs[0].columns)
 r.inFeatureCount = dfs[0].shape[-1]
+
+PrintInDataRanges(dfs)
 
 # Plot a small sample of the input data
 FE.PlotInData(r, dfs, 0, [0, 50])
@@ -155,6 +177,7 @@ for i in np.arange(r.outFeatureCount):
     outData[:,:,i] /= np.percentile(np.abs(outData[:,:,i]), 90)
     
 # Print out data
+PrintOutDataRanges(r, outData)
 FE.PlotOutData(r, prices, outData, 0)
 
 print(f'Input data (samples={r.sampleCount}, timeSteps={r.timesteps})')
@@ -164,7 +187,7 @@ print(f'Output data shape = {outData.shape}')
 # %% Train!
 
 # To reload the NeuralNet function for debugging:
-if 1:
+if 0:
     print('Reloading NeuralNet')
     import importlib
     importlib.reload(NeuralNet)
@@ -189,7 +212,6 @@ if single:
     thisInData = [arr * r.config['inScale'] for arr in inData]
     
     thisOutData = outData * r.config['outScale']
-    PrintDataLimits(thisInData, thisOutData)
     prunedNetwork = False
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)
@@ -309,7 +331,6 @@ else:
             
             thisInData = inData * r.config['inScale']
             thisOutData = outData * r.config['outScale']
-#            PrintDataLimits(thisInData, thisOutData)
             NeuralNet.MakeAndTrainNetwork(r, thisInData, thisOutData)
 #            NeuralNet.MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
             NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
