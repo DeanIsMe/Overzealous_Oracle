@@ -92,7 +92,7 @@ def GetHourlyDf(coins, numHours):
 
         asset_details = api.get_asset_details(coin) # Lists the details of every trading pair that the coin is involved with
         pairs_df = pd.DataFrame(asset_details['markets']['base']) # All trading pairs where this coin is "base" currency
-        pairs_df['exch_score'] = pairs_df['exchange'].map(lambda e : exch_precedence[e])
+        pairs_df['exch_score'] = pairs_df['exchange'].map(lambda e : exch_precedence[e] if e in exch_precedence else 0)
         pairs_df.sort_values('exch_score', ascending=False)
 
         # Decide on the exchange and coin pair
@@ -187,5 +187,7 @@ def GetHourlyDf(coins, numHours):
     return dfs
 
 
-# Test
-# dfs = GetHourlyDf(['ETH'], 2500)
+# Testing
+if __name__ == '__main__':
+    dfs = GetHourlyDf(['ETH','BTC'], 2500)
+

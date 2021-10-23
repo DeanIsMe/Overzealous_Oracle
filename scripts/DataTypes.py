@@ -36,7 +36,6 @@ class FeedLoc():
     null = -1
     LEN = 3
     NAMES = {conv:'conv', lstm:'lstm', dense:'dense', null:'null'}
-    LIST = [conv, lstm, dense]
     
 
 class ModelResult():

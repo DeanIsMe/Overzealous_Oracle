@@ -254,10 +254,11 @@ def MakeNetwork(r):
         opt = r.kerasOpt
         r.optimiser = r.kerasOptStr
 
+    feeds = [[] for i in range(FeedLoc.LEN)]
     
     # Keras functional API
     # Input
-    conv_feed = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.conv])), name='conv_feed')
+    feeds[FeedLoc.conv] = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.conv])), name='conv_feed')
 
     # Make conv layers
     convLayers = []
@@ -268,10 +269,10 @@ def MakeNetwork(r):
             dilation_rate=convConf['convDilation'][i],
             # input_shape=(None, r.inFeatureCount),
             use_bias=True, padding='causal',
-            name=f"conv1d_{i}_{convConf['convDilation'][i]}x")(conv_feed))
+            name=f"conv1d_{i}_{convConf['convDilation'][i]}x")(feeds[FeedLoc.conv]))
 
     if convConf['layerCount'] == 0:
-        conv_out = conv_feed
+        conv_out = feeds[FeedLoc.conv]
     elif convConf['layerCount'] == 1:
         conv_out = convLayers[0]
     elif convConf['layerCount'] > 1:
@@ -281,8 +282,8 @@ def MakeNetwork(r):
 
     # Make the LSTM layers
     # LSTM input
-    lstm_feed = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
-    lstm_input = keras.layers.concatenate([conv_out, lstm_feed])
+    feeds[FeedLoc.lstm] = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
+    lstm_input = keras.layers.concatenate([conv_out, feeds[FeedLoc.lstm]])
 
     lstmLayerCount = len(r.config['neurons'])
     
@@ -304,11 +305,11 @@ def MakeNetwork(r):
     
     # Dense layers
     # Dense input
-    dense_feed = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
-    dense_input = keras.layers.concatenate([lstm_out, dense_feed])
+    feeds[FeedLoc.dense] = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
+    dense_input = keras.layers.concatenate([lstm_out, feeds[FeedLoc.dense]])
 
     main_output = keras.layers.Dense(r.outFeatureCount, name='final_output')(dense_input)
-    r.model = keras.models.Model(inputs=[conv_feed, lstm_feed, dense_feed], outputs=[main_output])
+    r.model = keras.models.Model(inputs=feeds, outputs=[main_output])
 
     # mape = mean absolute percentage error
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error'])

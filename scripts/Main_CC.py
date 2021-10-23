@@ -45,7 +45,6 @@ from DataTypes import FeedLoc
 
 
 def PrintOutDataRanges(r, outData):
-    print(r.inFeatureList)
     print("\r\noutData 90th Percentile:")
     print(np.percentile(outData, 90, axis=1))
     print("\r\noutData 10th Percentile:")
@@ -83,7 +82,7 @@ r.config = GetConfig()
 
 #r.coinList = ['ETH','BTC','BCH','XRP','LTC','XLM','NEO','EOS','XEM', 'IOT','DOGE','ADA','POT','VET','XLM','ETC']
 #r.coinList = ['ETH','BTC','BCH','XRP','LTC']
-r.coinList = ['ETH', 'ETC']
+r.coinList = ['BTC', 'ETH']
 #r.coinList = ['ETH']
 
 print('Done import')
@@ -94,22 +93,23 @@ if 0:
     numHours = 24*180
     dfs = cgd.GetHourlyDf(r.coinList, numHours) # a list of data frames
     # To save a data set:
-    date_str = datetime.now().strftime('%Y-%m-%d')
-    filehandler = open(f'./indata/dfs_{len(dfs)}coins_{numHours}hours_{date_str}.pickle', 'wb')
-    pickle.dump(dfs, filehandler)
+    dateStr = datetime.now().strftime('%Y-%m-%d')
+    filehandler = open(f'./indata/dfs_{len(dfs)}coins_{numHours}hours_{dateStr}.pickle', 'wb')
+    package = {'dfs':dfs, 'coinList':r.coinList, 'numHours':numHours, 'dateStr':dateStr}
+    pickle.dump(package, filehandler)
     filehandler.close()
 else:
     # !@#$
 #    filehandler = open('dfs_5coins_40days_2018-02-17.pickle', 'rb')
-    filehandler = open('./indata/dfs_2coins_4320hours_2021-05-09.pickle', 'rb')
-    dfs = pickle.load(filehandler)
+    filehandler = open('./indata/dfs_2coins_4320hours_2021-10-19.pickle', 'rb')
+    package = pickle.load(filehandler)
+    dfs = package['dfs']
+    r.coinList = package['coinList']
+    numHours = package['numHours']
     filehandler.close()
 
-
-# TODO fix this. Improve data saving (save coin names with the data)
 for i, df in enumerate(dfs):
     df.name = r.coinList[i]
-
 print('Got data')
 
 # %% Prep the training data
@@ -129,8 +129,6 @@ FE.ScaleLoadedData(dfs) # High, Low, etc
 r.inFeatureList = list(dfs[0].columns)
 r.inFeatureCount = dfs[0].shape[-1]
 
-PrintInDataRanges(dfs)
-
 # Plot a small sample of the input data
 FE.PlotInData(r, dfs, 0, [0, 50])
 
@@ -143,7 +141,7 @@ inData = [[] for i in range(FeedLoc.LEN)]
 feedLocFeatures = [[] for i in range(FeedLoc.LEN)]
 
 # Determine which features go into which feed locations
-for loc in FeedLoc.LIST:
+for loc in range(FeedLoc.LEN):
     # Find the features that are in this feed location
     feedLocFeatures[loc] = np.zeros_like(featureList, dtype=np.bool)
     for fidx, feature in enumerate(featureList):
@@ -153,7 +151,7 @@ for loc in FeedLoc.LIST:
                 break
 
 # Make the input data
-for loc in FeedLoc.LIST:
+for loc in range(FeedLoc.LEN):
     # Make the input data 3D array for this feed location
     inData[loc] = np.zeros((r.sampleCount, r.timesteps, np.sum(feedLocFeatures[loc])))
     for s, df in enumerate(dfs):
@@ -163,9 +161,8 @@ r.feedLocFeatures = feedLocFeatures
 
 # Print feed locations for all input data
 print("The input feed locations for the features are:")
-for loc in FeedLoc.LIST:
+for loc in range(FeedLoc.LEN):
     print(f"Feed location '{FeedLoc.NAMES[loc]}': {list(featureList[feedLocFeatures[loc]])}")
-
 
 # OUTPUT DATA
 outData = FE.CalcFavScores(r.config, prices)
@@ -177,6 +174,8 @@ for i in np.arange(r.outFeatureCount):
     outData[:,:,i] /= np.percentile(np.abs(outData[:,:,i]), 90)
     
 # Print out data
+PrintInDataRanges(dfs)
+
 PrintOutDataRanges(r, outData)
 FE.PlotOutData(r, prices, outData, 0)
 
@@ -207,6 +206,9 @@ if single:
     r.config['outScale'] = 1
     r.config['revertToBest'] = True
     
+    # r.config['inScale'] = 1
+    # r.config['outScale'] = 1
+    # r.config['revertToBest'] = True
     
     # Scale the input and output data
     thisInData = [arr * r.config['inScale'] for arr in inData]

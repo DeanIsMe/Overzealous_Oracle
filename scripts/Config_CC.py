@@ -94,6 +94,7 @@ def GetConfig():
     config['outScale'] = 1
 
     # feedLoc indicates the location at which the data feature will be fed into the network
+    # Note that a feature can be used at multiple feed locations
     flc = [[] for i in range(FeedLoc.LEN)]
 
     flc[FeedLoc.dense].append('high')
@@ -102,6 +103,7 @@ def GetConfig():
     flc[FeedLoc.conv].append('close')
     flc[FeedLoc.conv].append('ema')
     flc[FeedLoc.conv].append('logDiff')
+    flc[FeedLoc.dense].append('logDiff')
     flc[FeedLoc.dense].append('vix')
     flc[FeedLoc.lstm].append('RSI')
 
