@@ -315,12 +315,20 @@ def MakeNetwork(r):
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error'])
     #r.model.build(input_shape=(None, r.inFeatureCount))
     
-    r.model.summary()
-    
     r.trainMetrics = TrainMetrics()
 
     return
 
+#==========================================================================
+def PrintNetwork(r):
+    r.model.summary()
+
+    keras.utils.plot_model(r.model, show_shapes=True, to_file='model.png')
+
+    from IPython.display import Image, display
+    img = Image('model.png')
+    display(img)
+    return
 
 #==========================================================================
 def TrainNetwork(r, inData, outData, final=True):
@@ -398,25 +406,28 @@ def MakeAndTrainNetwork(r, inData, outData):
 # Make several networks and choose the best
 def MakeAndTrainPrunedNetwork(r, inData, outData):
     # Create all models
-    options = 5
-    testEpochs = 10
-    print('\nPRUNED NETWORK. Making {} networks for {} epochs.'.format(options, testEpochs))
-    models = [0] * options
-    trainMetrics = [0] * options
-    for i in range(options):
+    candidates = 5
+    trialEpochs = 10
+    print('\nPRUNED NETWORK. Making {} networks for {} epochs.'.format(candidates, trialEpochs))
+    models = [0] * candidates
+    trainMetrics = [0] * candidates
+    for i in range(candidates):
         MakeNetwork(r)
         models[i] = r.model
         trainMetrics[i] = r.trainMetrics
-    # Perform initial training to test each model
+        if i == 0:
+            PrintNetwork(r)
+
+    # Trial each model by a small amount of training
     epochBackup = r.config['epochs']
-    r.config['epochs'] = testEpochs
-    lossTrain = np.zeros((options))
-    lossVal = np.zeros((options))
-    trainGradSum = np.zeros((options))
-    valGradSum = np.zeros((options))
-    fitness = np.zeros((options))
-    for i in range(options):
-        print('Training model {} out of {}'.format(i, options))
+    r.config['epochs'] = trialEpochs
+    lossTrain = np.zeros((candidates))
+    lossVal = np.zeros((candidates))
+    trainGradSum = np.zeros((candidates))
+    valGradSum = np.zeros((candidates))
+    fitness = np.zeros((candidates))
+    for i in range(candidates):
+        print('Training model {} out of {}'.format(i, candidates))
         r.model = models[i]
         r.trainMetrics = trainMetrics[i]
         TrainNetwork(r, inData, outData, final=False)
@@ -428,7 +439,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
         # of the log of the loss.
         # Should be negative. More negative = better
         # The most recent is weighted more than the first
-        pastVal = min(6,testEpochs)
+        pastVal = min(6,trialEpochs)
         trainGradSum[i] = np.sum(np.diff(np.log(r.trainMetrics.lossTrain[-pastVal:])) * np.linspace(1,2,num=pastVal-1))
         valGradSum[i] = np.sum(np.diff(np.log(r.trainMetrics.lossVal[-pastVal:])) * np.linspace(1,2,num=pastVal-1))
        
@@ -480,7 +491,7 @@ def TestNetwork(r, priceData, inData, outData):
         print(r.config['dataRatios'])
     testI = r.tInd['val'] # Validation indices used as test
     
-    #Predictions
+    #Predictions (entire input data range)
     predictY = r.model.predict(inData, batch_size=r.sampleCount)
     
     def _PlotOutput(priceData, out, predict, tRange, sample):
@@ -537,6 +548,6 @@ def TestNetwork(r, priceData, inData, outData):
     # Assess whether or not a 'floor' is occurring - if a large percent of the
     # data is close to the minimum
     
-    
-    print('Train Score: {:5}\nTest Score: {:5} (1=neutral)'.format(r.trainScore, r.testScore))
+    print('Scores (1:neutral, >1 :better than neutral)')
+    print('Train Score: {:.3f}\nTest Score: {:.3f} '.format(r.trainScore, r.testScore))
     return

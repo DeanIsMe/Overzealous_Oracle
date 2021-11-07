@@ -6,6 +6,7 @@ Created on Dec 17  2017
 """
 
 #%% 
+# IMPORTS & SETUP
 # Set the seed for repeatable results (careful with this use)
 #print('FIXING SEED FOR REPEATABLE RESULTS')
 #from numpy.random import seed
@@ -13,7 +14,9 @@ Created on Dec 17  2017
 #from tensorflow import set_random_seed
 #set_random_seed(3)
 
+# note that matplotlib notebook isn't working for me
 %matplotlib widget
+
 
 import os
 os.chdir(os.path.dirname(os.path.dirname(__file__)))
@@ -85,9 +88,10 @@ r.config = GetConfig()
 r.coinList = ['BTC', 'ETH']
 #r.coinList = ['ETH']
 
-print('Done import')
+print('DONE')
 
-# %% Get Data
+# %% 
+# GET DATA
 
 if 0:
     numHours = 24*180
@@ -110,9 +114,11 @@ else:
 
 for i, df in enumerate(dfs):
     df.name = r.coinList[i]
-print('Got data')
+print('Got data\nDONE')
 
-# %% Prep the training data
+# %% 
+# PREP DATA
+
 r.sampleCount = len(dfs)
 r.timesteps = dfs[0].shape[-2]
 
@@ -183,7 +189,10 @@ print(f'Input data (samples={r.sampleCount}, timeSteps={r.timesteps})')
 
 print(f'Output data shape = {outData.shape}')
 
-# %% Train!
+print('DONE')
+
+# %% 
+# TRAIN
 
 # To reload the NeuralNet function for debugging:
 if 0:
@@ -217,13 +226,14 @@ if single:
     prunedNetwork = False
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)
+        NeuralNet.PrintNetwork(r)
         NeuralNet.TrainNetwork(r, thisInData, thisOutData)
     else:
         NeuralNet.MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
 
     NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
 
-    keras.utils.plot_model(r.model, show_shapes=True)
+    
 else:
     # *****************************************************************************
     # Batch Run
@@ -362,3 +372,5 @@ else:
     #Go to sleep
     print('Going to sleep...')
     os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
+
+print('DONE')
