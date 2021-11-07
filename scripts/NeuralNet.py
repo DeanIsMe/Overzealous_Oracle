@@ -405,10 +405,11 @@ def MakeAndTrainNetwork(r, inData, outData):
 #==========================================================================
 # Make several networks and choose the best
 def MakeAndTrainPrunedNetwork(r, inData, outData):
-    # Create all models
+    # SETTINGS
     candidates = 5
     trialEpochs = 10
-    print('\nPRUNED NETWORK. Making {} networks for {} epochs.'.format(candidates, trialEpochs))
+
+    # Create all models
     models = [0] * candidates
     trainMetrics = [0] * candidates
     for i in range(candidates):
@@ -417,6 +418,9 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
         trainMetrics[i] = r.trainMetrics
         if i == 0:
             PrintNetwork(r)
+    print('\n**********************************************************************************')
+    print('PRUNED NETWORK')
+    print(f'Training {candidates} candidate networks for {trialEpochs} epochs, then selecting the best.')
 
     # Trial each model by a small amount of training
     epochBackup = r.config['epochs']
@@ -427,6 +431,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     valGradSum = np.zeros((candidates))
     fitness = np.zeros((candidates))
     for i in range(candidates):
+        print('\n**********************************************************************************')
         print('Training model {} out of {}'.format(i, candidates))
         r.model = models[i]
         r.trainMetrics = trainMetrics[i]
@@ -447,26 +452,30 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     # PICK THE BEST MODEL
     # Higher score = better
     scores = pd.DataFrame()
-    scores['train'] = lossTrain.min()/lossTrain
-    scores['val'] = fitness/fitness.max()
+    scores['train'] = lossTrain.min()/lossTrain # 0 to 1 (1 being the best candidate)
+    scores['val'] = fitness/fitness.max() # 0 to 1 (1 being the best candidate)
     # For gradient scores, 1 is the top score, and it scales down from there
     # The amount that it drops is determined by 
-    trainGradScale = np.abs(np.mean(np.log(lossTrain)))
-    temp = trainGradSum / trainGradScale * 8
-    scores['trainGrad'] = np.clip(temp.min()-temp+1, -1, 1)
-    
-    valGradScale = np.abs(np.mean(np.log(lossVal)))
-    temp = valGradSum / valGradScale * 8
-    scores['valGrad'] = np.clip(temp.min()-temp+1, -1, 1)
-        
-    print('All Scores:')
+
+    # Method prior to 2021-11-07:
+    # trainGradScale = np.abs(np.mean(np.log(lossTrain)))
+    # temp = trainGradSum / trainGradScale * 8
+    # scores['trainGrad'] = np.clip(temp.min()-temp+1, -1, 1)
+
+    scores['trainGrad'] = np.clip(-(trainGradSum / np.abs(trainGradSum.min())), -1, 1)
+    scores['valGrad'] = np.clip(-(valGradSum / np.abs(valGradSum.min())), -1, 1)
+
+    print('\n**********************************************************************************')
+    print('**********************************************************************************')
+    print('**********************************************************************************')
+    print('All candidate scores:')
     print(scores)
     
     # Weight each of the scores
     scores['train'] *= 1
     scores['val'] *= 2
-    scores['trainGrad'] *= 0.1
-    scores['valGrad'] *= 1
+    scores['trainGrad'] *= 0.5
+    scores['valGrad'] *= 0.5
     
     totalScore = scores.sum(axis=1)
               
@@ -497,7 +506,7 @@ def TestNetwork(r, priceData, inData, outData):
     def _PlotOutput(priceData, out, predict, tRange, sample):
         """Plot a single output feature of 1 sample"""
         plotsHigh = 1+r.outFeatureCount
-        fig, axs = plt.subplots(plotsHigh, 1, figsize=(12,3*plotsHigh)) # TODO get this working
+        fig, axs = plt.subplots(plotsHigh, 1, sharex=True, figsize=(12,3*plotsHigh)) # TODO get this working
         fig.tight_layout()
         
         ax = axs[0]

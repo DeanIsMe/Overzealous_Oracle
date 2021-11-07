@@ -24,10 +24,10 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
     x = tInd
     fig = plt.figure(1, figsize=(12,10))
     fig.tight_layout()
-    plt.subplot(2,1,1)
+    ax1 = plt.subplot(2,1,1)
     plt.plot(x,prices[sample, tInd])
     plt.title('Price of {}'.format(r.coinList[sample]))
-    plt.subplot(2,1,2)
+    plt.subplot(2,1,2, sharex=ax1)
     lines = list(range(outDim))
     for i in range(outDim):
         lines[i], = plt.plot(x,output[sample,tInd,i], label='Out{0}({1})'.format(i, r.config['outputRanges'][i]))
