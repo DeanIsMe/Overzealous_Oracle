@@ -14,10 +14,10 @@ def GetConfig():
     config['excludeRecentDays'] = 50 # Tradeoff between how recent, and accuracy to 'to Buy' score
     
     
-#    config['outputRanges'] = [[1,5], [6,25], [26,125]] # The ranges over which to calculate output scores
+    # config['outputRanges'] = [[1,5], [6,25], [26,125]] # The ranges over which to calculate output scores
     # Starts at 1
     # I'm using hourly data
-    config['outputRanges'] = [[6,24], [24,72], [72,168] ]
+    config['outputRanges'] = [[26,125]]
     # Also defines the number of output periods
     
     # When the date is within 'excludeRecentDays' of the end of the data, then
@@ -36,7 +36,7 @@ def GetConfig():
     # validation score
     config['revertToBest'] = True
     
-    config['earlyStopping'] = 15 # 0 = no early stopping. Otherwise, the number
+    config['earlyStopping'] = 0 # 0 = no early stopping. Otherwise, the number
 #     of epochs of no improvements before training is stopped
     
     config['dropout'] = 0.25 # Dropout layer applied at inputs of each LSTM       
@@ -46,9 +46,9 @@ def GetConfig():
     config['neurons'] = [256, 128, 64, 32] # Number of neurons in LSTM
     # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
     # The num of conv layers will be the greatest number of valid layers
-    config['convDilation'] = [1, 3, 9, 27, 81] # 
-    config['convFilters'] = 20 # list or scalar
-    config['convKernelSz'] = 72
+    config['convDilation'] = [1, 3, 9, 27, 81] # Time dilation factors. 
+    config['convFilters'] = 50 # Number of filters per layer. List or scalar
+    config['convKernelSz'] = 72 # Kernel size per filter
 
     config['epochs'] = 64 # Number of complete passes of the data (subject to early stopping)
 

@@ -90,6 +90,7 @@ r.coinList = ['BTC', 'ETH']
 
 print('DONE')
 
+# ******************************************************************************
 # %% 
 # GET DATA
 
@@ -116,6 +117,7 @@ for i, df in enumerate(dfs):
     df.name = r.coinList[i]
 print('Got data\nDONE')
 
+# ******************************************************************************
 # %% 
 # PREP DATA
 
@@ -191,15 +193,18 @@ print(f'Output data shape = {outData.shape}')
 
 print('DONE')
 
+# ******************************************************************************
 # %% 
 # TRAIN
 
 # To reload the NeuralNet function for debugging:
-if 0:
+if 1:
     print('Reloading NeuralNet')
     import importlib
     importlib.reload(NeuralNet)
 
+
+prunedNetwork = True # Pruned: generate multiple candidated and use the best
 
 single = True
 if single:
@@ -208,22 +213,14 @@ if single:
     r.isBatch = False
     r.batchRunName = ''
     
-    r.config['earlyStopping'] = 0
-    r.config['neurons'] = [256, 128]
-    r.config['epochs'] = 16
-    r.config['inScale'] = 1
-    r.config['outScale'] = 1
-    r.config['revertToBest'] = True
-    
-    # r.config['inScale'] = 1
-    # r.config['outScale'] = 1
-    # r.config['revertToBest'] = True
+    # !@#$
+    #r.config['neurons'] = [32]
+    # r.config['epochs'] = 8
     
     # Scale the input and output data
     thisInData = [arr * r.config['inScale'] for arr in inData]
     
     thisOutData = outData * r.config['outScale']
-    prunedNetwork = False
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)
         NeuralNet.PrintNetwork(r)
@@ -279,8 +276,6 @@ else:
             r.config['earlyStopping'] = 20
             # *********************************************************************
             # Change for this batch
-#            r.config['epochs'] = 1
-            r.config['dropout'] = 0
             r.config['inScale'] = val1
             r.config['outScale'] = val2
             
@@ -344,7 +339,7 @@ else:
             thisInData = inData * r.config['inScale']
             thisOutData = outData * r.config['outScale']
             NeuralNet.MakeAndTrainNetwork(r, thisInData, thisOutData)
-#            NeuralNet.MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
+            NeuralNet.MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
             NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
     
     print('\n\nBATCH RUN FINISHED!\n')
@@ -370,7 +365,7 @@ else:
             results[idx2][idx1].model = models[idx2][idx1]
     
     #Go to sleep
-    print('Going to sleep...')
-    os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
+    #print('Going to sleep...')
+    #os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
 
 print('DONE')

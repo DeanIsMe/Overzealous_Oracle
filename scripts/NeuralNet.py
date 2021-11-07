@@ -52,9 +52,8 @@ class ValidationCb(keras.callbacks.Callback):
                 totalDiff += np.sum(np.abs(np.diff(smoothed)))
                 diffCount += yTarget[sample,:,outTarget].size-1
         avgDiffTarget = totalDiff / diffCount
-        self.avgDiffUpper = avgDiffTarget / 4 # above this, there's no penalisation
-        self.avgDiffLower = avgDiffTarget / 10 # Below this, the
-        # penalty is a maximum
+        self.avgDiffUpper = avgDiffTarget * 0.25 # above this, there's no penalisation
+        self.avgDiffLower = avgDiffTarget * 0.1 # Below this, the penalty is a maximum
         
         self.trainMetrics = trainMetrics # Links to the r.trainMetrics
         # Tracking the best result:
@@ -79,16 +78,16 @@ class ValidationCb(keras.callbacks.Callback):
         
                
         fitness = 1/val_sq_err
-        # Penalise predictions don't move enough
+        # Penalise predictions that don't vary across the time series
         thisDiff = np.mean(np.abs(np.diff(predictY, axis=1)))
         debug = 0
         if debug: print('Dif Score {:5f}, Lower {:5f}, Upper {:5f}'.format(thisDiff, self.avgDiffLower, self.avgDiffUpper), end='')
-        penalty = 1.
+        penalty = 1. # fitness is multiplied by this penalty
         if thisDiff < self.avgDiffUpper:
             penaltyLower = 0.001
             penaltyUpper = 1
             pos = (thisDiff - self.avgDiffLower) / (self.avgDiffUpper - self.avgDiffLower) # 0 to 1
-            penalty = (pos + penaltyLower) * (penaltyUpper - penaltyLower)
+            penalty = (pos) * (penaltyUpper - penaltyLower) + penaltyLower
             penalty = np.clip(penalty, penaltyLower, penaltyUpper)
             fitness *= penalty
             if debug: print(' scaler = {:5f}'.format(penalty))
@@ -96,13 +95,17 @@ class ValidationCb(keras.callbacks.Callback):
         
         logs['fitness'] = fitness # for choosing the best model
         
+        #
+        bestResult = False
         if fitness > self.bestFitness:
             self.bestFitness = fitness
             self.bestWeights = self.model.get_weights()
             self.bestEpoch = thisEpoch
-            print('Epoch {:2} - Fitness= {:7.5f} - DiffScaler= {:5.3f} - New top!'.format(thisEpoch, fitness, penalty))
-        elif (thisEpoch%10)==0:
-            print('Epoch {:2} - Fitness= {:7.3f} - DiffScaler= {:5.3f}'.format(thisEpoch, fitness, penalty))
+            bestResult = True
+        
+        if bestResult or (thisEpoch%10)==0:
+            print(f"Epoch {thisEpoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
+                 f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
         
         self.trainMetrics.absErrVal.append(val_abs_err)
         self.trainMetrics.lossVal.append(val_sq_err)
@@ -119,8 +122,8 @@ class ValidationCb(keras.callbacks.Callback):
                 if self.wait >= self.patience and fitness < self.prevFitness:
                     self.stopped_epoch = epoch
                     self.model.stop_training = True
-                    print('No improvement in {} epochs'.format(self.patience))
-                    print('STOPPING TRAINING AT EPOCH {}'.format(thisEpoch))
+                    print('No validation improvement in {} epochs'.format(self.patience))
+                    print('STOPPING TRAINING EARLY AT EPOCH {}'.format(thisEpoch))
         
         self.prevFitness = fitness
         
@@ -183,9 +186,10 @@ def _CalcIndices(tMax, dataRatios, exclude):
 
 #==========================================================================
 def PlotTrainMetrics(r, subplot=False):
-    #PLot Training
+    #Plot Training
     if not subplot:
-        plt.figure()
+        fig = plt.figure()
+        fig.tight_layout()
 #    ax = plt.gca()
     maxY = -9e9
     minY = 9e9
@@ -213,11 +217,12 @@ def PlotTrainMetrics(r, subplot=False):
 #    ax.set_yscale('log')
     
     if not subplot:
-        plt.suptitle('Training Errors')
+        plt.title('Training Scores (1=neutral, >1:better)')
         plt.show()
     
     return (maxY, minY)
 
+#==========================================================================
 def PrepConvConfig(r):
     convConf = dict()
     convConf['convDilation'] = r.config['convDilation']
@@ -277,7 +282,6 @@ def MakeNetwork(r):
         conv_out = convLayers[0]
     elif convConf['layerCount'] > 1:
         conv_out = keras.layers.concatenate(convLayers)
-
 
 
     # Make the LSTM layers
@@ -399,6 +403,7 @@ def TrainNetwork(r, inData, outData, final=True):
 #==========================================================================
 def MakeAndTrainNetwork(r, inData, outData):
     MakeNetwork(r)
+    PrintNetwork(r)
     TrainNetwork(r, inData, outData)
     return
 
@@ -407,7 +412,7 @@ def MakeAndTrainNetwork(r, inData, outData):
 def MakeAndTrainPrunedNetwork(r, inData, outData):
     # SETTINGS
     candidates = 5
-    trialEpochs = 10
+    trialEpochs = 16
 
     # Create all models
     models = [0] * candidates
@@ -420,7 +425,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
             PrintNetwork(r)
     print('\n**********************************************************************************')
     print('PRUNED NETWORK')
-    print(f'Training {candidates} candidate networks for {trialEpochs} epochs, then selecting the best.')
+    print(f'Training {candidates} candidate models for {trialEpochs} epochs, then selecting the best.')
 
     # Trial each model by a small amount of training
     epochBackup = r.config['epochs']
@@ -431,8 +436,8 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     valGradSum = np.zeros((candidates))
     fitness = np.zeros((candidates))
     for i in range(candidates):
-        print('\n**********************************************************************************')
-        print('Training model {} out of {}'.format(i, candidates))
+        print('\n************************************')
+        print(f'Training candidate model {i} out of {candidates}')
         r.model = models[i]
         r.trainMetrics = trainMetrics[i]
         TrainNetwork(r, inData, outData, final=False)
@@ -468,7 +473,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     print('\n**********************************************************************************')
     print('**********************************************************************************')
     print('**********************************************************************************')
-    print('All candidate scores:')
+    print('All candidate model scores:')
     print(scores)
     
     # Weight each of the scores
@@ -483,7 +488,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
      
     print('Total:')
     print(totalScore)
-    print('Chosen model: {}'.format(bestI))
+    print('Chose candidate model: {}'.format(bestI))
     
     # Train on the best model
     r.config['epochs'] = epochBackup
@@ -506,7 +511,7 @@ def TestNetwork(r, priceData, inData, outData):
     def _PlotOutput(priceData, out, predict, tRange, sample):
         """Plot a single output feature of 1 sample"""
         plotsHigh = 1+r.outFeatureCount
-        fig, axs = plt.subplots(plotsHigh, 1, sharex=True, figsize=(12,3*plotsHigh)) # TODO get this working
+        fig, axs = plt.subplots(plotsHigh, 1, sharex=True, figsize=(12,3*plotsHigh))
         fig.tight_layout()
         
         ax = axs[0]
