@@ -76,7 +76,7 @@ def PrintInDataRanges(dfs):
 
 KB.clear_session()
 
-r = ModelResult()  
+r = ModelResult()
 r.config = GetConfig() 
 
 #At this point, the stock data should have all gaps filled in
@@ -94,13 +94,14 @@ print('DONE')
 # %% 
 # GET DATA
 
-if 0:
-    numHours = 24*180
+if 1:
+    numHours = 24*365*6
     dfs = cgd.GetHourlyDf(r.coinList, numHours) # a list of data frames
     # To save a data set:
     dateStr = datetime.now().strftime('%Y-%m-%d')
     filehandler = open(f'./indata/dfs_{len(dfs)}coins_{numHours}hours_{dateStr}.pickle', 'wb')
     package = {'dfs':dfs, 'coinList':r.coinList, 'numHours':numHours, 'dateStr':dateStr}
+
     pickle.dump(package, filehandler)
     filehandler.close()
 else:
@@ -204,7 +205,7 @@ if 1:
     importlib.reload(NeuralNet)
 
 
-prunedNetwork = True # Pruned: generate multiple candidated and use the best
+prunedNetwork = False # Pruned: generate multiple candidates and use the best
 
 single = True
 if single:

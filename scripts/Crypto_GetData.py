@@ -14,6 +14,15 @@ import pycwatch # https://github.com/iuvbio/pycwatch
 # API docs are here: https://docs.cryptowat.ch/rest-api/markets/list
 import pandas as pd
 
+from private_keys import cryptowatch_public
+
+from IPython.display import Markdown, display
+def printmd(string, color=None):
+    if color is None:
+        display(Markdown(string))
+    else:
+        colorstr = "<span style='color:{}'>{}</span>".format(color, string)
+        display(Markdown(colorstr))
 
 # %%
 #==========================================================================
@@ -33,7 +42,7 @@ def GetHourlyDf(coins, numHours):
 
 
     api = pycwatch.rest # create api client
-    #TODO create and include my API key
+    api.api_key = cryptowatch_public
 
     # list of available assets
     #assets = api.list_assets()
@@ -86,9 +95,13 @@ def GetHourlyDf(coins, numHours):
 
     t_2010 = 1262332800 # Unix time for 2010
     
+    print('\n********************************************************')
+    printmd(f"## Get Crypto Data")
+    print(f"Getting {numHours} hours ({numHours/24} days)")
+    print(f"Starting from {time.ctime(t_now - numHours * 60 * 60)} until now")
 
     for coin in coins:
-        print(f'[{coin}] Getting data for {coin}')
+        printmd(f'### [{coin}] Getting data for {coin}')
 
         asset_details = api.get_asset_details(coin) # Lists the details of every trading pair that the coin is involved with
         pairs_df = pd.DataFrame(asset_details['markets']['base']) # All trading pairs where this coin is "base" currency
@@ -112,22 +125,27 @@ def GetHourlyDf(coins, numHours):
             continue
 
 
-        # Find how long this data pair exists for
+        # Find how much time is available for this data pair
         try:
-            ohlc_resp = api.get_market_ohlc(exchange, pair_str, periods=period_options['1d'], after=int(t_2010))
+            ohlc_resp = api.get_market_ohlc(exchange, pair_str, periods=period_int, after=int(t_2010))
         except pycwatch.errors.APIError:
             print(f'[{coin}] Exchange {exchange} with pair {pair_str} not found! Something went wrong')
             success = False
             raise
-        this_df = pd.DataFrame(ohlc_resp['1d'], columns = ohlc_col_headers)
-        this_df['time_unix'][0]
-        days_avail = (t_now - this_df['time_unix'][0]) / (3600*24)
+        this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
+        hours_avail = (t_now - this_df['time_unix'][0]) / (3600)
 
-        print(f'[{coin}]: Using pair {pair_str} from exchange {exchange}. {days_avail:.0f} days of data')
+        # Check that data is available
+        print(f'[{coin}] Using pair {pair_str} from exchange {exchange}. {hours_avail/24:.0f} days of data')
+
+        if hours_avail < numHours:
+            printmd(f'[{coin}] **{numHours/24:.0f} days requested, but only {hours_avail/24:.0f} days available!**', color="0xFF8888")
         
+
         # Start time at the back and work forward
         # unix time (second since 1970)
-        t = t_now - numHours * 60 * 60
+        t = t_now - int(min(hours_avail, numHours)) * 60 * 60
+        print(f"[{coin}] Starting from {time.ctime(t)}")
         df = pd.DataFrame()
         conn_err_count = 0 # count of consecutive connection errors
         while t < t_now:
@@ -158,7 +176,10 @@ def GetHourlyDf(coins, numHours):
                 
 
             points_recv = len(ohlc_resp[period_str])
-            if points_recv != point_count:
+            if points_recv == 0:
+                print(f'[{coin}] RECEIVED NO DATA POINTS!')
+
+            elif points_recv != point_count:
                 print(f'[{coin}] Only received {points_recv} / {point_count} points.')
 
             if points_recv > 0:
