@@ -24,6 +24,7 @@ def printmd(string, color=None):
         colorstr = "<span style='color:{}'>{}</span>".format(color, string)
         display(Markdown(colorstr))
 
+
 # %%
 #==========================================================================
 # Get hourly dataframe
@@ -38,7 +39,7 @@ def GetHourlyDf(coins, numHours):
     """
     t_diff_max = 40*24*60*60 # Seconds. Max of 1000 points, so I'll do only 40 days per call (960 hours)
     dfs = []
-    t_now = time.time()
+    t_now = int(time.time())
 
 
     api = pycwatch.rest # create api client
@@ -93,8 +94,26 @@ def GetHourlyDf(coins, numHours):
     period_str = '1h'
     period_int = period_options[period_str]
 
-    t_2010 = 1262332800 # Unix time for 2010
-    
+    def FindDataFirstFinalTimes(exchange, pair_str, period_int):
+        # Find the first and final times available for this data pair
+        t_2010 = 1262332800 # Unix time for 2010
+        t_now = int(time.time())
+        # Get the first data point
+        try:
+            ohlc_resp = api.get_market_ohlc(exchange, pair_str, periods=period_int, after=t_2010)
+        except pycwatch.errors.APIError:
+            print(f'[{coin}] Exchange {exchange} with pair {pair_str} not found! Something went wrong')
+            raise
+        if len(ohlc_resp[period_str]) == 0:
+            return (t_now, t_now)
+        this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
+        first_t = this_df['time_unix'][0]
+        # Get the final data point
+        ohlc_resp = api.get_market_ohlc(exchange, pair_str, periods=period_int, before=t_now)
+        this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
+        final_t = this_df['time_unix'].iloc[-1]
+        return (first_t, final_t)
+
     print('\n********************************************************')
     printmd(f"## Get Crypto Data")
     print(f"Getting {numHours} hours ({numHours/24} days)")
@@ -111,49 +130,56 @@ def GetHourlyDf(coins, numHours):
         # Decide on the exchange and coin pair
         base_options = ['usdt', 'usd'] # Could expand on this to support BTC and ETH pair
         exchange = None
+
+        # Check the length of data available for every possible exchange & pair
+        opt_df = pd.DataFrame(columns=['exchange', 'exch_score', 'pair_str', 'pair_idx', 'first_t', 'final_t'])
+        opt_df = opt_df.astype({'exchange':str, 'exch_score':int, 'pair_str':str, 'pair_idx':int,'first_t':'int64', 'final_t':'int64'})
         for base in base_options:
             pair_str = coin.lower() + base
+            for pair_idx in range(len(pairs_df)):
+                if pairs_df['pair'][pair_idx] == pair_str:
+                    # Found the pair. How long has it existed for?
+                    exchange = pairs_df['exchange'][pair_idx]
+                    exch_score = pairs_df['exch_score'][pair_idx]
+                    (first_t, final_t) = FindDataFirstFinalTimes(exchange, pair_str, period_int)
+                    #print(f"{pair_str:8} from {exchange:12} avail for {(final_t - first_t) / (3600*24):6.0f} days. Since {time.ctime(first_t)}")
+                    # Append to dataframe
+                    opt_df.loc[len(opt_df.index)] = [exchange, exch_score, pair_str, pair_idx, first_t, final_t]
 
-            pair_indices = pairs_df['pair'] == pair_str
-            if sum(pair_indices) > 0:
-                row_idx = pairs_df[pair_indices]['exch_score'].idxmax()
-                exchange = pairs_df['exchange'][row_idx]
-                break
-        
         if exchange is None:
             print(f'ERROR! No suitable pair found for coin {coin}')
             continue
 
-
-        # Find how much time is available for this data pair
-        try:
-            ohlc_resp = api.get_market_ohlc(exchange, pair_str, periods=period_int, after=int(t_2010))
-        except pycwatch.errors.APIError:
-            print(f'[{coin}] Exchange {exchange} with pair {pair_str} not found! Something went wrong')
-            success = False
-            raise
-        this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
-        hours_avail = (t_now - this_df['time_unix'][0]) / (3600)
-
-        # Check that data is available
+        # Choose from the options
+        t_range = [int(t_now - numHours * 3600), t_now] # The requested time range
+        opt_df['time_coverage'] = (opt_df['final_t'].map(lambda t : min(t_range[1], t)) - opt_df['first_t'].map(lambda t : max(t_range[0], t))\
+             + opt_df['exch_score']) / (t_range[1] - t_range[0])
+        print(opt_df)
+        # Choose the best option
+        pair_idx = opt_df['time_coverage'].idxmax()
+        exchange = opt_df['exchange'][pair_idx]
+        pair_str = opt_df['pair_str'][pair_idx]
+        first_t = opt_df['first_t'][pair_idx]
+        final_t = opt_df['final_t'][pair_idx]
+        
+        # Print
+        hours_avail = int((final_t - first_t) / 3600)
         print(f'[{coin}] Using pair {pair_str} from exchange {exchange}. {hours_avail/24:.0f} days of data')
-
         if hours_avail < numHours:
             printmd(f'[{coin}] **{numHours/24:.0f} days requested, but only {hours_avail/24:.0f} days available!**', color="0xFF8888")
         
-
+        # Collect the actual data
         # Start time at the back and work forward
         # unix time (second since 1970)
-        t = t_now - int(min(hours_avail, numHours)) * 60 * 60
+        t = first_t
         print(f"[{coin}] Starting from {time.ctime(t)}")
         df = pd.DataFrame()
         conn_err_count = 0 # count of consecutive connection errors
-        while t < t_now:
+        while t < final_t:
             t_start = t
-            time_span = min(t_diff_max, t_now - t_start)
+            time_span = min(t_diff_max, final_t - t)
             point_count = int(time_span/3600)
             t_end = t + time_span
-            
             
             print(f'[{coin}] Getting {point_count:4.0f} points, up to time {time.ctime(t_end)}')
 
