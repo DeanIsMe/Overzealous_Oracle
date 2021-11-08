@@ -129,38 +129,41 @@ def GetHourlyDf(coins, numHours):
 
         # Decide on the exchange and coin pair
         base_options = ['usdt', 'usd'] # Could expand on this to support BTC and ETH pair
-        exchange = None
+        option_count = 0
 
         # Check the length of data available for every possible exchange & pair
-        opt_df = pd.DataFrame(columns=['exchange', 'exch_score', 'pair_str', 'pair_idx', 'first_t', 'final_t'])
-        opt_df = opt_df.astype({'exchange':str, 'exch_score':int, 'pair_str':str, 'pair_idx':int,'first_t':'int64', 'final_t':'int64'})
+        pairs_df['first_t'] = int(0)
+        pairs_df['final_t'] = int(0)
+        pairs_df = pairs_df.astype({'exchange':str, 'exch_score':int, 'pair':str,'first_t':'int64', 'final_t':'int64'})
         for base in base_options:
             pair_str = coin.lower() + base
             for pair_idx in range(len(pairs_df)):
                 if pairs_df['pair'][pair_idx] == pair_str:
                     # Found the pair. How long has it existed for?
-                    exchange = pairs_df['exchange'][pair_idx]
-                    exch_score = pairs_df['exch_score'][pair_idx]
-                    (first_t, final_t) = FindDataFirstFinalTimes(exchange, pair_str, period_int)
+                    (first_t, final_t) = FindDataFirstFinalTimes(pairs_df['exchange'][pair_idx], pair_str, period_int)
+                    pairs_df.at[pair_idx, 'first_t'] = first_t
+                    pairs_df.at[pair_idx, 'final_t'] = final_t
+                    option_count += 1
                     #print(f"{pair_str:8} from {exchange:12} avail for {(final_t - first_t) / (3600*24):6.0f} days. Since {time.ctime(first_t)}")
-                    # Append to dataframe
-                    opt_df.loc[len(opt_df.index)] = [exchange, exch_score, pair_str, pair_idx, first_t, final_t]
-
-        if exchange is None:
+        if option_count == 0:
             print(f'ERROR! No suitable pair found for coin {coin}')
             continue
 
         # Choose from the options
+        pairs_df['days'] = (pairs_df['final_t'] - pairs_df['first_t']) / (60*60*24)
         t_range = [int(t_now - numHours * 3600), t_now] # The requested time range
-        opt_df['time_coverage'] = (opt_df['final_t'].map(lambda t : min(t_range[1], t)) - opt_df['first_t'].map(lambda t : max(t_range[0], t))\
-             + opt_df['exch_score']) / (t_range[1] - t_range[0])
-        print(opt_df)
+        pairs_df['time_coverage'] = (pairs_df['final_t'].map(lambda t : min(t_range[1], t)) - pairs_df['first_t'].map(lambda t : max(t_range[0], t))\
+             + pairs_df['exch_score']) / (t_range[1] - t_range[0])
+        # I've added 'exch score' to the time coverage such that if 2 exchanges have the same
+        # time coverage, the one with the higher score will be chosen
+        print(pairs_df[pairs_df['first_t'] != 0][['exchange','pair','days','time_coverage']])
+
         # Choose the best option
-        pair_idx = opt_df['time_coverage'].idxmax()
-        exchange = opt_df['exchange'][pair_idx]
-        pair_str = opt_df['pair_str'][pair_idx]
-        first_t = opt_df['first_t'][pair_idx]
-        final_t = opt_df['final_t'][pair_idx]
+        pair_idx = pairs_df['time_coverage'].idxmax()
+        exchange = pairs_df['exchange'][pair_idx]
+        pair_str = pairs_df['pair'][pair_idx]
+        first_t = pairs_df['first_t'][pair_idx]
+        final_t = pairs_df['final_t'][pair_idx]
         
         # Print
         hours_avail = int((final_t - first_t) / 3600)
