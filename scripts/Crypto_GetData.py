@@ -107,7 +107,7 @@ def GetHourlyDf(coins, numHours):
         if len(ohlc_resp[period_str]) == 0:
             return (t_now, t_now)
         this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
-        first_t = this_df['time_unix'][0]
+        first_t = this_df['time_unix'].iloc[0]
         # Get the final data point
         ohlc_resp = api.get_market_ohlc(exchange, pair_str, periods=period_int, before=t_now)
         this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
@@ -152,11 +152,14 @@ def GetHourlyDf(coins, numHours):
         # Choose from the options
         pairs_df['days'] = (pairs_df['final_t'] - pairs_df['first_t']) / (60*60*24)
         t_range = [int(t_now - numHours * 3600), t_now] # The requested time range
-        pairs_df['time_coverage'] = (pairs_df['final_t'].map(lambda t : min(t_range[1], t)) - pairs_df['first_t'].map(lambda t : max(t_range[0], t))\
+        pairs_df['time_coverage'] = (pairs_df['final_t'].map(lambda t : max(t_range[0], min(t_range[1], t))) - \
+            pairs_df['first_t'].map(lambda t : min(t_range[1], max(t_range[0], t)))\
              + pairs_df['exch_score']) / (t_range[1] - t_range[0])
         # I've added 'exch score' to the time coverage such that if 2 exchanges have the same
         # time coverage, the one with the higher score will be chosen
-        print(pairs_df[pairs_df['first_t'] != 0][['exchange','pair','days','time_coverage']])
+        # Print a table of all of the candidate pairs & exchanges
+        print(pairs_df[pairs_df['first_t'] != 0][['exchange','pair','days','time_coverage']].to_string(
+            formatters={'time_coverage':'{:6.3f}'.format, 'days':'{:.2f}'.format}))
 
         # Choose the best option
         pair_idx = pairs_df['time_coverage'].idxmax()
@@ -165,7 +168,7 @@ def GetHourlyDf(coins, numHours):
         first_t = pairs_df['first_t'][pair_idx]
         final_t = pairs_df['final_t'][pair_idx]
         
-        # Print
+        # Print chosen pair & exchange
         hours_avail = int((final_t - first_t) / 3600)
         print(f'[{coin}] Using pair {pair_str} from exchange {exchange}. {hours_avail/24:.0f} days of data')
         if hours_avail < numHours:
@@ -208,9 +211,6 @@ def GetHourlyDf(coins, numHours):
             if points_recv == 0:
                 print(f'[{coin}] RECEIVED NO DATA POINTS!')
 
-            elif points_recv != point_count:
-                print(f'[{coin}] Only received {points_recv} / {point_count} points.')
-
             if points_recv > 0:
                 this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
                 this_df['time'] = pd.to_datetime(this_df['time_unix'],unit='s')
@@ -219,6 +219,9 @@ def GetHourlyDf(coins, numHours):
                 this_df.pop('time')
                 this_df.pop('quote_volume')
                 this_df.pop('open')
+                
+                if points_recv != point_count:
+                    print(f'[{coin}] Actually received {points_recv} / {point_count} points.')
             
                 if df.empty:
                     df = this_df
