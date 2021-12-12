@@ -26,16 +26,14 @@ def printmd(string, color=None):
 
 
 # %%
-#==========================================================================
-# Get hourly dataframe
-# Returns a dataframe for each coin. Attempts to download numHours of data
-# for each coin. If that much data isn't available, then it will return
-# what it finds
-# close, high, low, volume
+#*******************************************************************************
 def GetHourlyDf(coins, numHours):
     """
-    Returns a list of dataframes
-    Columns in output are close, high, low
+    Get hourly dataframe from Cryptowatch API (using pycwatch lib)
+    Returns a dataframe for each coin. Attempts to download numHours of data
+    for each coin. If that much data isn't available, then it will return
+    what it finds
+    Columns in output are close, high, low, volume
     """
     t_diff_max = 40*24*60*60 # Seconds. Max of 1000 points, so I'll do only 40 days per call (960 hours)
     dfs = []
@@ -82,7 +80,7 @@ def GetHourlyDf(coins, numHours):
         # There are further opitions, but I won't use them
     }
     ohlc_col_headers = [
-    'time_unix',
+    'time', # Unix time (secs since 1970)
     'open', # price
     'high', # price
     'low', # price
@@ -107,21 +105,23 @@ def GetHourlyDf(coins, numHours):
         if len(ohlc_resp[period_str]) == 0:
             return (t_now, t_now)
         this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
-        first_t = this_df['time_unix'].iloc[0]
+        first_t = this_df['time'].iloc[0]
         # Get the final data point
         ohlc_resp = api.get_market_ohlc(exchange, pair_str, periods=period_int, before=t_now)
         this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
-        final_t = this_df['time_unix'].iloc[-1]
+        final_t = this_df['time'].iloc[-1]
         return (first_t, final_t)
 
     print('\n********************************************************')
     printmd(f"## Get Crypto Data")
-    print(f"Getting {numHours} hours ({numHours/24} days)")
+    print(f"Getting {numHours} hours ({numHours/24:.2f} days)")
     print(f"Starting from {time.ctime(t_now - numHours * 60 * 60)} until now")
 
     for coin in coins:
         printmd(f'### [{coin}] Getting data for {coin}')
 
+        # STEP 1: DECIDE ON THE PAIR & EXCHANGE
+        # The output of Step 1 is exchange, pair_Str, first_t, & final_t
         asset_details = api.get_asset_details(coin) # Lists the details of every trading pair that the coin is involved with
         pairs_df = pd.DataFrame(asset_details['markets']['base']) # All trading pairs where this coin is "base" currency
         pairs_df['exch_score'] = pairs_df['exchange'].map(lambda e : exch_precedence[e] if e in exch_precedence else 0)
@@ -158,8 +158,9 @@ def GetHourlyDf(coins, numHours):
         # I've added 'exch score' to the time coverage such that if 2 exchanges have the same
         # time coverage, the one with the higher score will be chosen
         # Print a table of all of the candidate pairs & exchanges
+        printmd(f'[{coin}] **Exchange & pair comparison:**')
         print(pairs_df[pairs_df['first_t'] != 0][['exchange','pair','days','time_coverage']].to_string(
-            formatters={'time_coverage':'{:6.3f}'.format, 'days':'{:.2f}'.format}))
+            formatters={'time_coverage':'{:6.3f}'.format, 'days':'{:7.2f}'.format}))
 
         # Choose the best option
         pair_idx = pairs_df['time_coverage'].idxmax()
@@ -167,27 +168,33 @@ def GetHourlyDf(coins, numHours):
         pair_str = pairs_df['pair'][pair_idx]
         first_t = pairs_df['first_t'][pair_idx]
         final_t = pairs_df['final_t'][pair_idx]
-        
+
+       
         # Print chosen pair & exchange
-        hours_avail = int((final_t - first_t) / 3600)
-        print(f'[{coin}] Using pair {pair_str} from exchange {exchange}. {hours_avail/24:.0f} days of data')
+        hours_avail = int((final_t - first_t) / 3600) + 1
+        printmd(f'[{coin}] Using pair **{pair_str}** from exchange **{exchange}**. {hours_avail/24:.0f} days of data available')
         if hours_avail < numHours:
             printmd(f'[{coin}] **{numHours/24:.0f} days requested, but only {hours_avail/24:.0f} days available!**', color="0xFF8888")
         
+
+        # STEP 2: DOWNLOAD THE DATA
         # Collect the actual data
         # Start time at the back and work forward
         # unix time (second since 1970)
-        t = first_t
+        t = max(first_t, int(t_now - numHours * 3600)) 
+        printmd(f'\n[{coin}] **Downloading the data**')
         print(f"[{coin}] Starting from {time.ctime(t)}")
         df = pd.DataFrame()
         conn_err_count = 0 # count of consecutive connection errors
         while t < final_t:
             t_start = t
             time_span = min(t_diff_max, final_t - t)
-            point_count = int(time_span/3600)
+            point_count = round(time_span/3600)
             t_end = t + time_span
             
             print(f'[{coin}] Getting {point_count:4.0f} points, up to time {time.ctime(t_end)}')
+
+            #print(f'[{coin}] Getting {point_count:4.2f} points, {t_start} to {t_end}. Diff= {t_end - t_start}')
 
             try:
                 ohlc_resp = api.get_market_ohlc(exchange, pair_str, periods=period_int, after=int(t_start), before=int(t_end))
@@ -213,15 +220,14 @@ def GetHourlyDf(coins, numHours):
 
             if points_recv > 0:
                 this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
-                this_df['time'] = pd.to_datetime(this_df['time_unix'],unit='s')
-                this_df.index = this_df['time']
-                this_df.pop('time_unix')
-                this_df.pop('time')
+                this_df.index = pd.to_datetime(this_df['time'],unit='s')
+                this_df.index.name='datetime'
                 this_df.pop('quote_volume')
                 this_df.pop('open')
                 
                 if points_recv != point_count:
                     print(f'[{coin}] Actually received {points_recv} / {point_count} points.')
+                    #print(f'[{coin}] Actually received {points_recv} / {point_count} points. Up to {time.ctime( this_df['time'].iloc[-1] )}') !@#
             
                 if df.empty:
                     df = this_df
@@ -231,16 +237,81 @@ def GetHourlyDf(coins, numHours):
 
             t = t_end
 
-        
         if success:
             dfs.append(df)
             print(f'[{coin}] download finished. {len(df)} rows (hours) total')
 
-    # TODO Prune all arrays to have the same max length !@#
     return dfs
 
 
+#%%
+#*******************************************************************************
+# READ & PICKLE KRAKEN CSV
+# Downloaded from 
+
+# Read in all hourly data
+
+import pandas as pd
+import numpy as np
+import os
+import time
+
+def ReadKrakenCsv(csv_dir):
+    """
+    READ & PICKLE KRAKEN CSV
+    First, download the full data dump of kraken data from:
+    https://support.kraken.com/hc/en-us/articles/360047124832-Downloadable-historical-OHLCVT-Open-High-Low-Close-Volume-Trades-data
+    Then, call this function to read the hourly CSVs into a dataframe, & pickle it.
+    All non-hourly files are currently ignored.
+    The intention is that the data file could then be updated as needed from cryptowatch.
+    """
+    printmd('## Read Kraken CSV')
+    os.chdir(os.path.dirname(os.path.dirname(__file__)))
+    print(f'Working directory is "{os.getcwd()}"')
+    print(f'Loading CSVs from {csv_dir}')
+
+    #csv_dir = 'C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT'
+    data_hist = {}
+
+    time_modified = None
+    time_last_data = None
+
+    for file in os.listdir(os.fsencode(csv_dir)):
+        filename = os.fsdecode(file)
+        if filename.endswith("_60.csv"):
+            pair_str = filename.split('_')[0]
+            pair_df = pd.read_csv(os.path.join(csv_dir, filename), header=None, \
+                names=['time','open','high','low','close','volume','trades'], \
+                    dtype={'time':np.int64, 'trades':np.int64})
+            pair_df.pop('open')
+            pair_df.pop('trades')
+            data_hist[pair_str] = pair_df
+            # print(os.path.join(directory, filename))
+            if time_modified is None:
+                time_modified = os.stat(os.path.join(csv_dir, filename)).st_mtime
+
+            if pair_str == 'ETHUSD':
+                time_last_data = pair_df['time'].iloc[-1]
+            continue
+        else:
+            continue
+
+    # Save the data
+    import pickle
+    from datetime import datetime
+    date_str = datetime.fromtimestamp(time_last_data).strftime('%Y-%m-%d')
+    save_filename = f'./indata/{date_str}_in_data_60m.pickle'
+    filehandler = open(save_filename, 'wb')
+    package = {'data':data_hist, 'date_str':date_str, \
+        'time_saved':time.time(), 'time_last_data':time_last_data, 'time_kraken_modified':time_modified}
+    pickle.dump(package, filehandler)
+    filehandler.close()
+    print(f'Saved to {save_filename}')
+    print(f'DONE! Loaded & pickled CSV data for {len(data_hist)} pairs.')
+
+#%%
+#*******************************************************************************
 # Testing
 if __name__ == '__main__':
-    dfs = GetHourlyDf(['ETH','BTC'], 2500)
-
+    #dfs = GetHourlyDf(['ETH'], 2500)
+    ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT')
