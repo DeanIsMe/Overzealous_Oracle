@@ -17,7 +17,6 @@ Created on Dec 17  2017
 # note that matplotlib notebook isn't working for me
 %matplotlib widget
 
-
 import os
 os.chdir(os.path.dirname(os.path.dirname(__file__)))
 print(f'Working directory is "{os.getcwd()}"')
@@ -94,28 +93,9 @@ print('DONE')
 # %% 
 # GET DATA
 
-if 1:
-    numHours = 24*365*6
-    dfs = cgd.GetHourlyDf(r.coinList, numHours) # a list of data frames
-    # To save a data set:
-    dateStr = datetime.now().strftime('%Y-%m-%d')
-    filehandler = open(f'./indata/dfs_{len(dfs)}coins_{numHours}hours_{dateStr}.pickle', 'wb')
-    package = {'dfs':dfs, 'coinList':r.coinList, 'numHours':numHours, 'dateStr':dateStr}
+numHours = 24*365*5
+dfs = cgd.GetHourlyDf('./indata/2021-09-30_price_data_60m.pickle', r.coinList, numHours) # a list of data frames
 
-    pickle.dump(package, filehandler)
-    filehandler.close()
-else:
-    # !@#$
-#    filehandler = open('dfs_5coins_40days_2018-02-17.pickle', 'rb')
-    filehandler = open('./indata/dfs_2coins_4320hours_2021-10-19.pickle', 'rb')
-    package = pickle.load(filehandler)
-    dfs = package['dfs']
-    r.coinList = package['coinList']
-    numHours = package['numHours']
-    filehandler.close()
-
-for i, df in enumerate(dfs):
-    df.name = r.coinList[i]
 print('Got data\nDONE')
 
 # ******************************************************************************

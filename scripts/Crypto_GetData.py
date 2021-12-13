@@ -10,9 +10,6 @@ import numpy as np
 import pandas as pd
 import time
 
-import pycwatch # https://github.com/iuvbio/pycwatch
-# API docs are here: https://docs.cryptowat.ch/rest-api/markets/list
-import pandas as pd
 
 from private_keys import cryptowatch_public
 
@@ -24,10 +21,58 @@ def printmd(string, color=None):
         colorstr = "<span style='color:{}'>{}</span>".format(color, string)
         display(Markdown(colorstr))
 
+# !@#$ I NEED TO DEAL WITH GAPS IN THE DATA!
+
+#*******************************************************************************
+import pickle
+def GetHourlyDf(filename, coins, num_hours):
+    """Grab the hourly data from file, as a list of DataFrames
+
+    Args:
+        filename (str): the file to load from
+        coins (list): a list of coins of interest
+        num_hours (int): the number of hours (data points) for each coin
+
+    Returns:
+        list: A list of DataFrames. 1 per coin
+    """
+    filehandler = open(filename, 'rb')
+    package = pickle.load(filehandler)
+    data = package['data']
+    filehandler.close()
+    # 'data' is a dictionary where the key indicates the trading pair
+    dfs = [] # Output is a list of dataframes
+
+    base_options = ['usd', 'usdt']
+    for coin in coins:
+        coin_found = False
+        for base in base_options:
+            pair_check = coin.lower() + base
+            if pair_check in data:
+                # This trading pair exists. Check the duration
+                dur_avail = data[pair_check]['time'].iloc[-1] - data[pair_check]['time'].iloc[0]
+                rows_avail = len(data[pair_check])
+                if rows_avail > num_hours:
+                    # Sufficient duration. Go with it!
+                    print(f'[{coin}] Using trading pair {pair_check}')
+                    # Extract the relevant rows and save
+                    this_df = data[pair_check].iloc[-num_hours:]
+                    this_df.name = coin
+                    dfs.append(this_df)
+                    coin_found = True
+                    break
+        if not coin_found:
+            printmd(f'\n**ERROR!**', color="0xFF8888")
+            print(f'GetHourlyDf: No valid pair found for {coin} in file {filename}')
+            raise
+    return dfs
 
 # %%
 #*******************************************************************************
-def GetHourlyDf(coins, numHours):
+import pycwatch # https://github.com/iuvbio/pycwatch
+# API docs are here: https://docs.cryptowat.ch/rest-api/markets/list
+
+def GetHourlyDfCryptowatch(coins, numHours):
     """
     Get hourly dataframe from Cryptowatch API (using pycwatch lib)
     Returns a dataframe for each coin. Attempts to download numHours of data
@@ -241,6 +286,12 @@ def GetHourlyDf(coins, numHours):
             dfs.append(df)
             print(f'[{coin}] download finished. {len(df)} rows (hours) total')
 
+    # # To save a data set:
+    # dateStr = datetime.now().strftime('%Y-%m-%d')
+    # filehandler = open(f'./indata/dfs_{len(dfs)}coins_{numHours}hours_{dateStr}.pickle', 'wb')
+    # package = {'dfs':dfs, 'coinList':r.coinList, 'numHours':numHours, 'dateStr':dateStr}
+    # pickle.dump(package, filehandler)
+    # filehandler.close()
     return dfs
 
 
@@ -266,8 +317,7 @@ def ReadKrakenCsv(csv_dir):
     The intention is that the data file could then be updated as needed from cryptowatch.
     """
     printmd('## Read Kraken CSV')
-    os.chdir(os.path.dirname(os.path.dirname(__file__)))
-    print(f'Working directory is "{os.getcwd()}"')
+
     print(f'Loading CSVs from {csv_dir}')
 
     #csv_dir = 'C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT'
@@ -279,10 +329,15 @@ def ReadKrakenCsv(csv_dir):
     for file in os.listdir(os.fsencode(csv_dir)):
         filename = os.fsdecode(file)
         if filename.endswith("_60.csv"):
-            pair_str = filename.split('_')[0]
+            pair_str = filename.split('_')[0].lower()
+            # Kraken API uses 'XBT' instead of 'BTC'. Apply this change
+            pair_str = pair_str.replace('xbt','btc')
+
             pair_df = pd.read_csv(os.path.join(csv_dir, filename), header=None, \
                 names=['time','open','high','low','close','volume','trades'], \
                     dtype={'time':np.int64, 'trades':np.int64})
+            pair_df.index = pd.to_datetime(pair_df['time'],unit='s')
+            pair_df.index.name='datetime'
             pair_df.pop('open')
             pair_df.pop('trades')
             data_hist[pair_str] = pair_df
@@ -290,7 +345,7 @@ def ReadKrakenCsv(csv_dir):
             if time_modified is None:
                 time_modified = os.stat(os.path.join(csv_dir, filename)).st_mtime
 
-            if pair_str == 'ETHUSD':
+            if pair_str == 'ethusd':
                 time_last_data = pair_df['time'].iloc[-1]
             continue
         else:
@@ -300,7 +355,7 @@ def ReadKrakenCsv(csv_dir):
     import pickle
     from datetime import datetime
     date_str = datetime.fromtimestamp(time_last_data).strftime('%Y-%m-%d')
-    save_filename = f'./indata/{date_str}_in_data_60m.pickle'
+    save_filename = f'./indata/{date_str}_price_data_60m.pickle'
     filehandler = open(save_filename, 'wb')
     package = {'data':data_hist, 'date_str':date_str, \
         'time_saved':time.time(), 'time_last_data':time_last_data, 'time_kraken_modified':time_modified}
@@ -313,5 +368,11 @@ def ReadKrakenCsv(csv_dir):
 #*******************************************************************************
 # Testing
 if __name__ == '__main__':
-    #dfs = GetHourlyDf(['ETH'], 2500)
+    os.chdir(os.path.dirname(os.path.dirname(__file__)))
+    print(f'Working directory is "{os.getcwd()}"')
+
+    #dfs = GetHourlyDfCryptowatch(['ETH'], 2500)
+
+    #dfs = GetHourlyDf('./indata/2021-09-30_price_data_60m.pickle', ['ETH'], 100)
+
     ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT')
