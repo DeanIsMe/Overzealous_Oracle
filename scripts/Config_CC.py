@@ -37,18 +37,18 @@ def GetConfig():
     config['revertToBest'] = True
     
     config['earlyStopping'] = 0 # 0 = no early stopping. Otherwise, the number
-#     of epochs of no improvements before training is stopped
+#     of epochs of no improvements before training is stopped (patience)
     
     config['dropout'] = 0.25 # Dropout layer applied at inputs of each LSTM       
 #    
 #        
 #    # Neural Network
-    config['neurons'] = [256, 128, 64, 32] # Number of neurons in LSTM
+    config['neurons'] = [128, 64] # Number of neurons in LSTM
     # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
     # The num of conv layers will be the greatest number of valid layers
     config['convDilation'] = [1, 3, 9, 27, 81] # Time dilation factors. 
-    config['convFilters'] = 50 # Number of filters per layer. List or scalar
-    config['convKernelSz'] = 72 # Kernel size per filter
+    config['convFilters'] = 100 # Number of filters per layer. List or scalar
+    config['convKernelSz'] = 10 # Kernel size per filter
 
     config['epochs'] = 64 # Number of complete passes of the data (subject to early stopping)
 
