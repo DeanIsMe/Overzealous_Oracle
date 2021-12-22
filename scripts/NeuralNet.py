@@ -8,19 +8,20 @@ Created on Wed Aug 30 21:12:18 2017
 import numpy as np
 import matplotlib.pyplot as plt
 
-import keras
+import tensorflow as tf
+from tensorflow import keras
+
 from DataTypes import TrainMetrics
 import pandas as pd
-import keras.callbacks
 import time
 import os
-from ClockworkRNN import CWRNN
-from keras.callbacks import EarlyStopping
+#from ClockworkRNN import CWRNN
+
 
 from scripts.DataTypes import FeedLoc
        
 #==========================================================================
-class ValidationCb(keras.callbacks.Callback):
+class ValidationCb(tf.keras.callbacks.Callback):
     """
     This callback is used to validate/test the model after each epoch. Keras
     supports this functionality with validation_data in .fit(), but a downside
@@ -253,7 +254,10 @@ def MakeNetwork(r):
     if type(r.kerasOpt) == int:
         # beta_1 = exponential decay rate for 1st moment estimates. Default=0.9
         # beta_2 = exponential decay rate for 2nd moment estimates. Default=0.999
-        opt = keras.optimizers.Adam(lr=0.001, beta_1=0.9)
+        #opt = keras.optimizers.Adam(lr=0.001, beta_1=0.9)
+        #opt = keras.optimizer_v2.adam.Adam(learning_rate=0.001, beta_1=0.9) !@#$ DELETE
+        opt = keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9)
+        
         r.optimiser = 'Adam'
     else:
         opt = r.kerasOpt
@@ -327,7 +331,7 @@ def MakeNetwork(r):
 def PrintNetwork(r):
     r.model.summary()
 
-    keras.utils.plot_model(r.model, show_shapes=True, to_file='model.png')
+    keras.utils.plot_model(r.model, to_file='model.png', show_shapes=True)
 
     from IPython.display import Image, display
     img = Image('model.png')
@@ -369,7 +373,7 @@ def TrainNetwork(r, inData, outData, final=True):
 #    callbacks.append(checkpoint)
 
 #    callbacks += [keras.callbacks.TensorBoard(log_dir='./logs2', histogram_freq=0, batch_size=32, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)]
-    print('\nStarting training. Max {} epochs'.format(epochsLeft))
+    print(f'\nStarting training. Max {epochsLeft} epochs')
     
     trainX = [arr[:,r.tInd['train'],:] for arr in inData]
     trainY = outData[:, r.tInd['train']]
@@ -388,12 +392,12 @@ def TrainNetwork(r, inData, outData, final=True):
     
     end = time.time()
     r.trainTime = end-start
-    print('Training Time: {0}'.format(r.trainTime))
+    print(f'Training Time: {r.trainTime}')
     PlotTrainMetrics(r)
     
     if final and r.config['revertToBest']:
         if validationCb.bestEpoch > 0:
-            print('Reverting to the model with best validation (epoch {})'.format(validationCb.bestEpoch))
+            print(f'Reverting to the model with best validation (epoch {validationCb.bestEpoch})')
     #        r.model.load_weights(fileBestWeights)
             r.model.set_weights(validationCb.bestWeights)
 

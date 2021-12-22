@@ -22,7 +22,9 @@ os.chdir(os.path.dirname(os.path.dirname(__file__)))
 print(f'Working directory is "{os.getcwd()}"')
 
 import numpy as np
-import keras
+import tensorflow as tf
+from tensorflow import keras
+
 import FeatureExtraction as FE
 import NeuralNet
 from Config_CC import GetConfig
@@ -31,7 +33,7 @@ from DataTypes import ModelResult
 from TestSequences import GetInSeq
 import InputData as indata
 import copy
-from keras import backend as KB
+
 import datetime
 
 import matplotlib.pyplot as plt
@@ -40,8 +42,6 @@ import Crypto_GetData as cgd
 import pickle
 from datetime import datetime
 import pandas as pd
-
-from keras import regularizers
 
 from DataTypes import FeedLoc
 
@@ -72,8 +72,7 @@ def PrintInDataRanges(dfs):
         print(dfq)
 
 
-
-KB.clear_session()
+tf.keras.backend.clear_session()
 
 r = ModelResult()
 r.config = GetConfig() 
@@ -94,6 +93,7 @@ print('DONE')
 # GET DATA
 
 numHours = 24*365*5
+numHours = 5000
 dfs = cgd.GetHourlyDf('./indata/2021-09-30_price_data_60m.pickle', r.coinList, numHours) # a list of data frames
 
 print('Got data\nDONE')
@@ -195,8 +195,8 @@ if single:
     r.batchRunName = ''
     
     # !@#$
-    #r.config['neurons'] = [32]
-    # r.config['epochs'] = 8
+    r.config['neurons'] = [32]
+    r.config['epochs'] = 8
     
     # Scale the input and output data
     thisInData = [arr * r.config['inScale'] for arr in inData]

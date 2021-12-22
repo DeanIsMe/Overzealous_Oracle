@@ -1,5 +1,10 @@
+wheel
+numpy
+pandas
 tensorflow
 keras
 matplotlib
 pycwatch
 pydot
+graphviz
+ipympl

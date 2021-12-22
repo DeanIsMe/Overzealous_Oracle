@@ -15,10 +15,12 @@ Made by Dean Reading, 03/2018
 import warnings
 import numpy as np
 import keras.backend as K
+import keras
 from keras.layers.recurrent import RNN, _generate_dropout_mask
-from keras.engine import Layer
 from keras import activations, regularizers, constraints, initializers
-from keras.legacy import interfaces
+#from keras.legacy import interfaces
+from keras.engine import Layer
+#from keras.layers import Layer
 import tensorflow as tf
 
 class CWRNNCell(Layer):
