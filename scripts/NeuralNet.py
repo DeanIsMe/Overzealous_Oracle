@@ -34,11 +34,12 @@ class ValidationCb(tf.keras.callbacks.Callback):
         pass
     
     
-    def setup(self, xData, yTarget, trainMetrics, patience):
+    def setup(self, xData, yTarget, trainMetrics, patience, epochs):
         self.xData = xData # DOCUMENT THESE !@#$
         self.yTarget = np.array(yTarget) # Target of predictions
         self.targetSize = yTarget.size # Number of points
         self.targetTimeSteps = yTarget.shape[-2]
+        self.totalEpochs = epochs
         
         # Determine the thresholds for penalising lack of movement
         # This is to avoid uneventful results that don't do anything
@@ -67,7 +68,14 @@ class ValidationCb(tf.keras.callbacks.Callback):
         # Set to 0 to disable early stopping
         self.prevFitness = 0
         self.stopped_epoch = 0
+
+        self.startTime = time.time()
+        self.prevEpochTime = time.time()
+        self.prevPrintTime = time.time()
+        self.prevEtaPrintTime = time.time()
+        self.epochTimeHist = [] # a list of the previous ~3 epoch training durations
            
+    #==========================================================================
     def on_epoch_end(self, epoch, logs={}):
         self.trainMetrics.curEpoch += 1
         thisEpoch = self.trainMetrics.curEpoch
@@ -96,7 +104,7 @@ class ValidationCb(tf.keras.callbacks.Callback):
         
         logs['fitness'] = fitness # for choosing the best model
         
-        #
+        # Check if this is the best result
         bestResult = False
         if fitness > self.bestFitness:
             self.bestFitness = fitness
@@ -104,10 +112,25 @@ class ValidationCb(tf.keras.callbacks.Callback):
             self.bestEpoch = thisEpoch
             bestResult = True
         
-        if bestResult or (thisEpoch%10)==0:
+        # add the epoch duration to the list
+        now = time.time()
+        self.epochTimeHist.append(now)
+
+        # Epoch printout
+        if bestResult or (thisEpoch%10)==0 or now - self.prevPrintTime > 60. :
             print(f"Epoch {thisEpoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
                  f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
+            self.prevPrintTime = now
         
+        # Timing printout
+        if now - self.prevEtaPrintTime > 60.:
+            epochsRemaining = self.totalEpochs - thisEpoch
+            timePerEpoch = np.mean(np.diff(self.epochTimeHist[-4:]))
+            print(f'TimeElapsed= {(now - self.startTime)/60:.0f} min, TimePerEpoch= {timePerEpoch:.1f} s, \
+                TimeRemaining= {epochsRemaining * timePerEpoch / 60.:.0f} min')
+            self.prevEtaPrintTime = now
+        
+        # Update trainMetrics
         self.trainMetrics.absErrVal.append(val_abs_err)
         self.trainMetrics.lossVal.append(val_sq_err)
         self.trainMetrics.lossTrain.append(logs['loss'])
@@ -126,6 +149,7 @@ class ValidationCb(tf.keras.callbacks.Callback):
                     print('No validation improvement in {} epochs'.format(self.patience))
                     print('STOPPING TRAINING EARLY AT EPOCH {}'.format(thisEpoch))
         
+        self.prevEpochTime = now
         self.prevFitness = fitness
         
         
@@ -356,8 +380,9 @@ def TrainNetwork(r, inData, outData, final=True):
     startPredict = max(0, valI.min()-100) # This number of time steps are used to build state before starting predictions
 
     valInData = [arr[:,startPredict:valI.max()+1,:] for arr in inData]
-    validationCb.setup(valInData, outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'])
-        
+    validationCb.setup(valInData, outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'], r.config['epochs'])
+    
+    # The model could be partially trained
     epochsLeft = r.config['epochs'] - r.trainMetrics.curEpoch
     if epochsLeft == 0:
         print('\r\n\n\nERROR! NO EPOCHS REMAINING ON TRAINING!')
@@ -392,7 +417,7 @@ def TrainNetwork(r, inData, outData, final=True):
     
     end = time.time()
     r.trainTime = end-start
-    print(f'Training Time: {r.trainTime}')
+    print(f'Training Time: {r.trainTime/60.:.0f} min')
     PlotTrainMetrics(r)
     
     if final and r.config['revertToBest']:
