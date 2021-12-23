@@ -92,8 +92,7 @@ print('DONE')
 # %% 
 # GET DATA
 
-numHours = 24*365*5
-numHours = 5000
+numHours = 24*365*3
 dfs = cgd.GetHourlyDf('./indata/2021-09-30_price_data_60m.pickle', r.coinList, numHours) # a list of data frames
 
 print('Got data\nDONE')
@@ -195,7 +194,7 @@ if single:
     r.batchRunName = ''
     
     # !@#$
-    r.config['neurons'] = [32]
+    r.config['neurons'] = [128, 64]
     r.config['epochs'] = 8
     
     # Scale the input and output data

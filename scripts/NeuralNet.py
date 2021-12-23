@@ -34,12 +34,12 @@ class ValidationCb(tf.keras.callbacks.Callback):
         pass
     
     
-    def setup(self, xData, yTarget, trainMetrics, patience, epochs):
-        self.xData = xData # DOCUMENT THESE !@#$
-        self.yTarget = np.array(yTarget) # Target of predictions
-        self.targetSize = yTarget.size # Number of points
-        self.targetTimeSteps = yTarget.shape[-2]
-        self.totalEpochs = epochs
+    def setup(self, inData, outTarget, trainMetrics, patience, maxEpochs):
+        self.inData = inData # The input data that will be used for validation
+        self.outTarget = np.array(outTarget) # The target output. A perfect prediction model would predict these values
+        self.targetSize = outTarget.size # Number of points
+        self.targetTimeSteps = outTarget.shape[-2]
+        self.maxEpochs = maxEpochs
         
         # Determine the thresholds for penalising lack of movement
         # This is to avoid uneventful results that don't do anything
@@ -48,24 +48,25 @@ class ValidationCb(tf.keras.callbacks.Callback):
         diffCount = 0
         windowSz = 10
         window = np.ones((windowSz,))/windowSz
-        for sample in range(yTarget.shape[0]):
-            for outTarget in range(yTarget.shape[-1]):
-                smoothed = np.convolve(yTarget[sample,:,outTarget], window, mode='valid')
+        for sample in range(outTarget.shape[0]):
+            for outTarget in range(outTarget.shape[-1]):
+                smoothed = np.convolve(outTarget[sample,:,outTarget], window, mode='valid')
                 totalDiff += np.sum(np.abs(np.diff(smoothed)))
-                diffCount += yTarget[sample,:,outTarget].size-1
+                diffCount += outTarget[sample,:,outTarget].size-1
         avgDiffTarget = totalDiff / diffCount
         self.avgDiffUpper = avgDiffTarget * 0.25 # above this, there's no penalisation
         self.avgDiffLower = avgDiffTarget * 0.1 # Below this, the penalty is a maximum
         
         self.trainMetrics = trainMetrics # Links to the r.trainMetrics
+
         # Tracking the best result:
         self.bestFitness = 0
         self.bestWeights = []
         self.bestEpoch = 0
         # Early stopping
         self.wait = 0
-        self.patience = patience # Epochs before stopping early
-        # Set to 0 to disable early stopping
+        self.patience = patience # Epochs before stopping early. Set to 0 to disable early stopping
+
         self.prevFitness = 0
         self.stopped_epoch = 0
 
@@ -79,8 +80,8 @@ class ValidationCb(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs={}):
         self.trainMetrics.curEpoch += 1
         thisEpoch = self.trainMetrics.curEpoch
-        predictY = self.model.predict(self.xData, batch_size=100)
-        err = predictY[:,-self.targetTimeSteps:,:] - self.yTarget
+        predictY = self.model.predict(self.inData, batch_size=100)
+        err = predictY[:,-self.targetTimeSteps:,:] - self.outTarget
         
         val_abs_err = np.sum(np.abs(err)) / self.targetSize
         val_sq_err = np.sum(err**2) / self.targetSize
@@ -124,10 +125,10 @@ class ValidationCb(tf.keras.callbacks.Callback):
         
         # Timing printout
         if now - self.prevEtaPrintTime > 60.:
-            epochsRemaining = self.totalEpochs - thisEpoch
+            epochsRemaining = self.maxEpochs - thisEpoch
             timePerEpoch = np.mean(np.diff(self.epochTimeHist[-4:]))
-            print(f'TimeElapsed= {(now - self.startTime)/60:.0f} min, TimePerEpoch= {timePerEpoch:.1f} s, \
-                TimeRemaining= {epochsRemaining * timePerEpoch / 60.:.0f} min')
+            print(f'Time Elapsed= {(now - self.startTime)/60:.0f} min, PerEpoch= {timePerEpoch:.1f} s, \
+                Remaining= {epochsRemaining * timePerEpoch / 60.:.0f} min')
             self.prevEtaPrintTime = now
         
         # Update trainMetrics
@@ -417,14 +418,14 @@ def TrainNetwork(r, inData, outData, final=True):
     
     end = time.time()
     r.trainTime = end-start
-    print(f'Training Time: {r.trainTime/60.:.0f} min')
-    PlotTrainMetrics(r)
+    print(f'Training Time (h:m:s)= {r.trainTime//3600.:.0f}:{(r.trainTime%3600)//60.:02.0f}:{r.trainTime%60.:2.0f}.  {r.trainTime:.1f}s')
     
     if final and r.config['revertToBest']:
         if validationCb.bestEpoch > 0:
             print(f'Reverting to the model with best validation (epoch {validationCb.bestEpoch})')
-    #        r.model.load_weights(fileBestWeights)
             r.model.set_weights(validationCb.bestWeights)
+    
+    PlotTrainMetrics(r)
 
     return
 
