@@ -21,8 +21,6 @@ def printmd(string, color=None):
         colorstr = "<span style='color:{}'>{}</span>".format(color, string)
         display(Markdown(colorstr))
 
-# !@#$ I NEED TO DEAL WITH GAPS IN THE DATA!
-
 #*******************************************************************************
 import pickle
 def GetHourlyDf(filename, coins, num_hours):
@@ -323,6 +321,7 @@ def ReadKrakenCsv(csv_dir):
     #csv_dir = 'C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT'
     data_hist = {}
 
+    timestep = 3600
     time_modified = None
     time_last_data = None
 
@@ -340,6 +339,7 @@ def ReadKrakenCsv(csv_dir):
             pair_df.index.name='datetime'
             pair_df.pop('open')
             pair_df.pop('trades')
+            pair_df['filler'] = False # Indicates whether each row was generated to fill a gap
             data_hist[pair_str] = pair_df
             # print(os.path.join(directory, filename))
             if time_modified is None:
@@ -350,6 +350,9 @@ def ReadKrakenCsv(csv_dir):
             continue
         else:
             continue
+    
+    # Fill gaps in the data
+    data_hist, total_gaps_filled = FillDataGaps(data_hist, timestep)
 
     # Save the data
     import pickle
@@ -359,15 +362,16 @@ def ReadKrakenCsv(csv_dir):
     filehandler = open(save_filename, 'wb')
     package = {'data':data_hist, 'date_str':date_str, \
         'time_saved':time.time(), 'time_last_data':time_last_data, 'time_kraken_modified':time_modified, \
-            'time_gaps_filled':None, 'timestep':3600}
+            'gaps_filled_until':time_last_data, 'timestep':timestep}
     pickle.dump(package, filehandler)
     filehandler.close()
     print(f'Saved to {save_filename}')
     print(f'DONE! Loaded & pickled CSV data for {len(data_hist)} pairs.')
 
 # %%
-# FILL IN GAPS
-# With linear interpolation
+#*******************************************************************************
+# DEALING WITH GAPS IN DATA
+# !@#$ should I eliminate the spotty starts of each data series where there are more gaps than real data?
 from datetime import datetime
 
 def FillDataGaps(data, timestep):
@@ -413,6 +417,7 @@ def FillDataGaps(data, timestep):
         # Assume volume is 0 during these gaps.
         # All prices will be interpolated
         newdf['volume'] = 0
+        newdf['filler'] = True # All of these rows are filler rows
 
         df = pd.concat([data[pair], newdf])
         df.sort_index(inplace=True)
@@ -424,7 +429,7 @@ def FillDataGaps(data, timestep):
 
     return data, total_gaps_filled
 
-
+#*******************************************************************************
 def FillFileDataGaps(filename):
     """Loads data file, calls FillDataGaps, saves file
 
@@ -441,7 +446,7 @@ def FillFileDataGaps(filename):
     if total_gaps_filled == 0:
         print('No gaps filled')
     else:
-        package['time_gaps_filled'] = time.time()
+        package['gaps_filled_until'] = time.time()
         package['data'] = data
         filehandler = open(filename, 'wb')
         pickle.dump(package, filehandler)
@@ -449,7 +454,7 @@ def FillFileDataGaps(filename):
 
         print(f'Saved to {filename}')
 
-
+#*******************************************************************************
 def PlotGaps(data, pair='ethusd'):
     """Plots gap frequency for information & exploration purposes
     to assess data quality
@@ -503,5 +508,7 @@ if __name__ == '__main__':
 
     #ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT')
 
-    FillFileDataGaps(filename)
+    #FillFileDataGaps(filename)
 
+
+# %%
