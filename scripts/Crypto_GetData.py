@@ -336,7 +336,7 @@ def ReadKrakenCsv(csv_dir):
             pair_df = pd.read_csv(os.path.join(csv_dir, filename), header=None, \
                 names=['time','open','high','low','close','volume','trades'], \
                     dtype={'time':np.int64, 'trades':np.int64})
-            pair_df.index = pd.to_datetime(pair_df['time'],unit='s')
+            pair_df.index = pd.to_datetime(pair_df['time'], unit='s')
             pair_df.index.name='datetime'
             pair_df.pop('open')
             pair_df.pop('trades')
@@ -354,15 +354,141 @@ def ReadKrakenCsv(csv_dir):
     # Save the data
     import pickle
     from datetime import datetime
-    date_str = datetime.fromtimestamp(time_last_data).strftime('%Y-%m-%d')
+    date_str = pd.to_datetime(time_last_data, unit='s').strftime('%Y-%m-%d')
     save_filename = f'./indata/{date_str}_price_data_60m.pickle'
     filehandler = open(save_filename, 'wb')
     package = {'data':data_hist, 'date_str':date_str, \
-        'time_saved':time.time(), 'time_last_data':time_last_data, 'time_kraken_modified':time_modified}
+        'time_saved':time.time(), 'time_last_data':time_last_data, 'time_kraken_modified':time_modified, \
+            'time_gaps_filled':None, 'timestep':3600}
     pickle.dump(package, filehandler)
     filehandler.close()
     print(f'Saved to {save_filename}')
     print(f'DONE! Loaded & pickled CSV data for {len(data_hist)} pairs.')
+
+# %%
+# FILL IN GAPS
+# With linear interpolation
+from datetime import datetime
+
+def FillDataGaps(data, timestep):
+    """Price data often has gaps in time. I want data to exist at all time points.
+    This function finds where gaps exist, then inserts new rows.
+    Price data filled in via interpolation
+
+    Args:
+        data ([list]): List of dataframes of stock data
+        timestep ([int]): Expected seconds between data points. e.g. 3600 for 1hr
+
+    Returns:
+        [tuple]: (data, total_gaps_filled)
+    """
+    printmd("## Filling data gaps")
+    printmd(f'timestep={timestep}. {len(data)} pairs')
+    total_gaps_filled = 0
+    for pair in data.keys():
+
+        t_ser = data[pair]['time']
+
+        t = int(t_ser.iloc[0])
+        t -= t%timestep
+
+        t_end = t_ser.iloc[-1]
+
+        t_ser.index = t_ser.values
+
+        # Step through every expected time & record those that are missing
+        new_rows = []
+        while t < t_end:
+            if t not in t_ser:
+                new_rows.append({'time':t})
+            t += timestep
+
+        if len(new_rows) == 0:
+            print(f'[{pair:9s}] No gaps in data. Leaving as-in.')
+            continue
+        
+        newdf = pd.DataFrame(new_rows)
+        newdf.index = pd.to_datetime(newdf['time'], unit='s')
+        newdf.index.name='datetime'
+        # Assume volume is 0 during these gaps.
+        # All prices will be interpolated
+        newdf['volume'] = 0
+
+        df = pd.concat([data[pair], newdf])
+        df.sort_index(inplace=True)
+        df.interpolate(inplace=True) # Fill in price data with interpolations
+
+        data[pair] = df
+        total_gaps_filled += len(new_rows)
+        print(f'[{pair:9s}] Added {len(new_rows)} rows to fill in gaps')
+
+    return data, total_gaps_filled
+
+
+def FillFileDataGaps(filename):
+    """Loads data file, calls FillDataGaps, saves file
+
+    Args:
+        filename ([str]): The file to load & save
+    """
+    filehandler = open(filename, 'rb')
+    package = pickle.load(filehandler)
+    data = package['data']
+    filehandler.close()
+
+    data, total_gaps_filled = FillDataGaps(data, int(package['timestep']))
+
+    if total_gaps_filled == 0:
+        print('No gaps filled')
+    else:
+        package['time_gaps_filled'] = time.time()
+        package['data'] = data
+        filehandler = open(filename, 'wb')
+        pickle.dump(package, filehandler)
+        filehandler.close()
+
+        print(f'Saved to {filename}')
+
+
+def PlotGaps(data, pair='ethusd'):
+    """Plots gap frequency for information & exploration purposes
+    to assess data quality
+
+    Args:
+        data ([list]): list of dataframes
+        pair (str, optional): Defaults to 'ethusd'.
+    """
+    import matplotlib.pyplot as plt
+
+    delta_t = np.diff(data[pair]['time'])
+
+    from collections import Counter
+    cntr = Counter(delta_t)
+    total_cnt = len(delta_t)
+    del cntr[3600] # Remove the 1 hour
+    if len(cntr) == 0:
+        print(f'[{pair}] has no gaps')
+        return
+    #ax = plt.plot([int(i)/3600 for i in cntr.keys()], [int(i) for i in cntr.values()], 'x')
+    fig, ax = plt.subplots()
+    ax.plot([int(i)/3600 for i in cntr.keys()], [int(i)/total_cnt * 100 for i in cntr.values()], 'x')
+    ax.set(xlabel='Gap [hours]', ylabel='Occurrence [%]', title=f'Time gaps in {pair}')
+    #ax.set_yscale('log')
+    ax.grid()
+
+
+if 0:
+    # Example code to run PlotGaps
+    # 2021-12-26
+    os.chdir(os.path.dirname(os.path.dirname(__file__)))
+    filename = './indata/2021-09-30_price_data_60m.pickle'
+
+    filehandler = open(filename, 'rb')
+    package = pickle.load(filehandler)
+    data = package['data']
+    filehandler.close()
+
+    PlotGaps(data, 'ethusd')
 
 #%%
 #*******************************************************************************
@@ -371,8 +497,11 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.dirname(__file__)))
     print(f'Working directory is "{os.getcwd()}"')
 
-    #dfs = GetHourlyDfCryptowatch(['ETH'], 2500)
+    filename = './indata/2021-09-30_price_data_60m.pickle'
 
-    #dfs = GetHourlyDf('./indata/2021-09-30_price_data_60m.pickle', ['ETH'], 100)
+    #dfs = GetHourlyDf(filename, ['ETH'], 100)
 
-    ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT')
+    #ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT')
+
+    FillFileDataGaps(filename)
+

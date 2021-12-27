@@ -30,7 +30,7 @@ c1 = allCoinsIndex[idx1]
 c2 = allCoinsIndex[idx2]
 coinList = list(set(allCoins[idx1]).intersection(allCoins[idx2]))
 
-# !@#$ DEAL WITH MAX SIZES OF COIN LIST (can only hold 75 3 char coins)
+# !@# DEAL WITH MAX SIZES OF COIN LIST (can only hold 75 3 char coins)
 coinList = coinList[-50:]
 
 success = False

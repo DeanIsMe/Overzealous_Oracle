@@ -279,8 +279,6 @@ def MakeNetwork(r):
     if type(r.kerasOpt) == int:
         # beta_1 = exponential decay rate for 1st moment estimates. Default=0.9
         # beta_2 = exponential decay rate for 2nd moment estimates. Default=0.999
-        #opt = keras.optimizers.Adam(lr=0.001, beta_1=0.9)
-        #opt = keras.optimizer_v2.adam.Adam(learning_rate=0.001, beta_1=0.9) !@#$ DELETE
         opt = keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9)
         
         r.optimiser = 'Adam'
