@@ -9,6 +9,9 @@ import numpy as np
 
 import pandas as pd
 import time
+from pandas.core.construction import is_empty_data
+
+from pandas.core.frame import DataFrame
 
 
 from private_keys import cryptowatch_public
@@ -264,7 +267,7 @@ def GetHourlyDfCryptowatch(coins, numHours):
             if points_recv > 0:
                 this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
                 this_df.set_index(inplace=True, keys=pd.DatetimeIndex(pd.to_datetime(this_df['time'],unit='s')))
-                #this_df.index.name='datetime'
+                this_df.index.name='datetime'
                 this_df.pop('quote_volume')
                 this_df.pop('open')
                 
@@ -313,6 +316,7 @@ def ReadKrakenCsv(csv_dir):
     Then, call this function to read the hourly CSVs into a dataframe, & pickle it.
     All non-hourly files are currently ignored.
     The intention is that the data file could then be updated as needed from cryptowatch.
+    This function also scrubs teh data
     """
     printmd('## Read Kraken CSV')
 
@@ -336,7 +340,7 @@ def ReadKrakenCsv(csv_dir):
                 names=['time','open','high','low','close','volume','trades'], \
                     dtype={'time':np.int64, 'trades':np.int64})
             pair_df.set_index(inplace=True, keys=pd.DatetimeIndex(pd.to_datetime(pair_df['time'], unit='s')))
-            #pair_df.index.name='datetime'
+            pair_df.index.name='datetime'
             pair_df.pop('open')
             pair_df.pop('trades')
             pair_df['filler'] = False # Indicates whether each row was generated to fill a gap
@@ -351,8 +355,8 @@ def ReadKrakenCsv(csv_dir):
         else:
             continue
     
-    # Fill gaps in the data
-    data_hist, total_gaps_filled = FillDataGaps(data_hist, timestep)
+    # Remove spotty starts and fill gaps in the data
+    data_hist, _, _ = DataScrubbing(data_hist, timestep)
 
     # Save the data
     import pickle
@@ -371,13 +375,88 @@ def ReadKrakenCsv(csv_dir):
 # %%
 #*******************************************************************************
 # DEALING WITH GAPS IN DATA
-# !@#$ should I eliminate the spotty starts of each data series where there are more gaps than real data?
 from datetime import datetime
 
-def FillDataGaps(data, timestep):
+def RemoveSpottyStart(df, timestep, check_len = 24):
+    """Removes initial data from a series, until there is a gapless block of data
+    of length [check_len].
+
+    Args:
+        df ([DataFrame]): The dataframe to modify
+        timestep ([int]): Expected timestep in seconds, e.g. 3600 for hour
+        check_len (int, optional): The number of required contiguous, gapless rows required to be considered 'valid'. Defaults to 24.
+
+    Returns:
+        [tuple]: (df, rows_removed). Returns an empty dataframe if all data is bad
+    """
+    rows_initial = len(df.index)
+    t_ser = df[df['filler'] == False]['time']
+    delta_t = np.diff(t_ser)
+
+    gap_sum = np.convolve(delta_t / timestep, np.ones([check_len,]), mode='valid')
+    first_good_idx = np.argmin(gap_sum)
+    if gap_sum[first_good_idx] < check_len*0.99:
+        printmd('# SOMETHING UNEXPECTED HAPPENED!')
+        print('Data gaps are smaller than expected. Are there time duplicates?')
+    elif gap_sum[first_good_idx] > check_len*1.01:
+        # There are no sections of data that pass the criteria
+        df = df[0:0]
+        return df, rows_initial
+    first_good_t = t_ser.iloc[first_good_idx]
+
+    df = df[df['time'] >= first_good_t]
+    rows_final = len(df.index)
+    rows_removed = rows_initial - rows_final
+
+    return df, rows_removed
+
+
+#*******************************************************************************
+def FillDataGaps(df, timestep):
     """Price data often has gaps in time. I want data to exist at all time points.
     This function finds where gaps exist, then inserts new rows.
-    Price data filled in via interpolation
+    Price data filled in via interpolation.
+
+    Args:
+        df ([DataFrame]): DataFrame of stock data to process
+        timestep ([int]): Expected seconds between data points. e.g. 3600 for 1hr
+
+    Returns:
+        [tuple]: (df, total_gaps_filled)
+    """
+    t_ser = df['time']
+
+    t = int(t_ser.iloc[0])
+    t -= t%timestep
+
+    t_end = t_ser.iloc[-1]
+
+    # Step through every expected time & record those that are missing
+    new_times = []
+    while t < t_end:
+        data_found = t in t_ser.values
+        if not data_found:
+            new_times.append(t)
+        t += timestep
+    
+    if len(new_times) > 0:
+        newdf = pd.DataFrame(new_times, columns=['time'])
+        newdf.set_index(inplace=True, keys=pd.DatetimeIndex(pd.to_datetime(newdf['time'], unit='s')))
+        newdf.index.name='datetime'
+        # Assume volume is 0 during these gaps.
+        # All prices will be interpolated
+        newdf['volume'] = 0
+        newdf['filler'] = True # All of these rows are filler rows
+
+        df = pd.concat([df, newdf])
+        df.sort_index(inplace=True)
+        df.interpolate(inplace=True) # Fill in price data with interpolations
+
+    return df, len(new_times)
+
+#*******************************************************************************
+def DataScrubbing(data, timestep):
+    """Calls RemoveSpottyStart and FillDataGaps on each DataFrame
 
     Args:
         data ([list]): List of dataframes of stock data
@@ -386,73 +465,40 @@ def FillDataGaps(data, timestep):
     Returns:
         [tuple]: (data, total_gaps_filled)
     """
-    printmd("## Filling data gaps")
+    printmd("## Data scrubbing")
     timestep = int(timestep)
     printmd(f'timestep={timestep}. {len(data)} pairs')
     total_gaps_filled = 0
+    total_rows_removed = 0
+    pairs_to_delete = []
     for pair in data.keys():
-
         df = data[pair]
         rows_initial = len(df.index)
 
-        t_ser = df['time']
-
-        t = int(t_ser.iloc[0])
-        t -= t%timestep
-
-        t_end = t_ser.iloc[-1]
-
-        # Step through every expected time & record those that are missing
-        new_times = []
-        legit_cnt = 0 # +1 for true data, -1 for filler data
-        t_legit_from = t # Saves when legit_cnt last went positive
-        while t < t_end:
-            data_found = t in t_ser.values
-
-            if legit_cnt == 0 and data_found:
-                t_legit_from = t
-                new_times = []
-            legit_cnt += 1 if data_found else -1
-            
-            if not data_found:
-                new_times.append(t)
-            t += timestep
-        
-        if legit_cnt <= 0:
-            t_legit_from = t_end + timestep # All data is invalid
-            new_times = []
-        
-        if len(new_times) == 0:
-            print(f'[{pair:9s}] No gaps in data. Leaving as-in.')
+        df, rows_removed = RemoveSpottyStart(df, timestep, check_len=24)
+        total_rows_removed += rows_removed
+        if len(df.index) == 0:
+            # All data is invalid
+            print(f'[{pair:9s}] Had {rows_initial:6} rows. Too spotty! REMOVED PAIR')
+            pairs_to_delete.append(pair)
             continue
-        
-        newdf = pd.DataFrame(new_times, columns=['time'])
-        newdf.set_index(inplace=True, keys=pd.DatetimeIndex(pd.to_datetime(newdf['time'], unit='s')))
-        #newdf.index.name='datetime'
-        # Assume volume is 0 during these gaps.
-        # All prices will be interpolated
-        newdf['volume'] = 0
-        newdf['filler'] = True # All of these rows are filler rows
 
-        # REMOVE all data before t_legit_from
-        # This is because the number of Filler rows is greater than the real data rows
-        # It seems somewhat common for initial
-        df = df[df.time >= t_legit_from]
-        rows_removed = rows_initial - len(df.index)
+        df, rows_added = FillDataGaps(df, timestep)
+        if rows_added == 0 and rows_removed == 0:
+            print(f'[{pair:9s}] No gaps in data. Leaving as-in.')
+        else:
+            rows_final = len(df.index)
+            data[pair] = df
+            total_gaps_filled += rows_added
+            print(f'[{pair:9s}] Had {rows_initial:6} rows. Removed initial {rows_removed:6} spotty rows. Added {rows_added:6} rows to fill in gaps. Now {rows_final:6} rows.')
 
-        df = pd.concat([df, newdf])
-        df.sort_index(inplace=True)
-        df.interpolate(inplace=True) # Fill in price data with interpolations
-        rows_remaining = len(df.index)
+    for pair in pairs_to_delete:
+        del data[pair]
 
-        data[pair] = df
-        total_gaps_filled += len(new_times)
-        print(f'[{pair:9s}] Had {rows_initial:6} rows. Removed initial {rows_removed:6} spotty rows. Added {len(new_times):6} rows to fill in gaps. Now {rows_remaining:6} rows remain.')
-
-    return data, total_gaps_filled
+    return data, total_rows_removed, total_gaps_filled
 
 #*******************************************************************************
-def FillFileDataGaps(filename):
+def FileDataScrubbing(filename):
     """Loads data file, calls FillDataGaps, saves file
 
     Args:
@@ -463,12 +509,12 @@ def FillFileDataGaps(filename):
     data = package['data']
     filehandler.close()
 
-    data, total_gaps_filled = FillDataGaps(data, int(package['timestep']))
+    data, total_rows_removed, total_gaps_filled = DataScrubbing(data, int(package['timestep']))
 
-    if total_gaps_filled == 0:
-        print('No gaps filled')
+    if total_rows_removed == 0 and total_gaps_filled == 0:
+        print('No rows removed or gaps filled')
     else:
-        package['gaps_filled_until'] = time.time()
+        package['gaps_filled_until'] = package['time_last_data']
         package['data'] = data
         filehandler = open(filename, 'wb')
         pickle.dump(package, filehandler)
@@ -504,18 +550,6 @@ def PlotGaps(data, pair='ethusd'):
     ax.grid()
 
 
-if 0:
-    # Example code to run PlotGaps
-    # 2021-12-26
-    os.chdir(os.path.dirname(os.path.dirname(__file__)))
-    filename = './indata/2021-09-30_price_data_60m.pickle'
-
-    filehandler = open(filename, 'rb')
-    package = pickle.load(filehandler)
-    data = package['data']
-    filehandler.close()
-
-    PlotGaps(data, 'ethusd')
 
 #%%
 #*******************************************************************************
@@ -530,71 +564,21 @@ if __name__ == '__main__':
 
     ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT')
 
-    #FillFileDataGaps(filename)
+    #FileDataScrubbing(filename)
+
 
 #%%
-# os.chdir(os.path.dirname(os.path.dirname(__file__)))
-# filename = './indata/2021-09-30_price_data_60m.pickle'
+if 0:
+    # Example code to run PlotGaps, or DataScrubbing
+    # 2021-12-26
+    os.chdir(os.path.dirname(os.path.dirname(__file__)))
+    filename = './indata/2021-09-30_price_data_60m.pickle'
 
-# filehandler = open(filename, 'rb')
-# package = pickle.load(filehandler)
-# data = package['data']
-# filehandler.close()
+    filehandler = open(filename, 'rb')
+    package = pickle.load(filehandler)
+    data = package['data']
+    filehandler.close()
 
+    #PlotGaps(data, 'ethusd')
+    #data, _, _ = DataScrubbing(data, int(package['timestep']))
 # %%
-# pair='ethusd'
-# timestep = 3600
-# total_gaps_filled = 0
-# df = data[pair]
-
-# df = df[df['filler'] == False] # Remove any filler rows that might already exist
-
-# t_ser = df['time']
-
-# t = int(t_ser.iloc[0])
-# t -= t%timestep
-
-# t_end = t_ser.iloc[-1]
-
-# # Step through every expected time & record those that are missing
-# new_rows = []
-# legit_cnt = 0 # +1 for true data, -1 for filler data
-# t_legit_from = t # Saves when legit_cnt last went positive
-# while t < t_end:
-#     data_found = t in t_ser.values
-
-#     if legit_cnt == 0 and data_found:
-#         t_legit_from = t
-#     legit_cnt += 1 if data_found else -1
-    
-#     if not data_found:
-#         new_rows.append({'time':t})
-#     t += timestep
-
-
-
-# if len(new_rows) == 0:
-#     print(f'[{pair:9s}] No gaps in data. Leaving as-in.')
-#     continue
-
-# newdf = pd.DataFrame(new_rows)
-# newdf.index = pd.to_datetime(newdf['time'], unit='s')
-# newdf.index.name='datetime'
-# # Assume volume is 0 during these gaps.
-# # All prices will be interpolated
-# newdf['volume'] = 0
-# newdf['filler'] = True # All of these rows are filler rows
-
-# df = pd.concat([data[pair], newdf])
-# df.sort_index(inplace=True)
-# df.interpolate(inplace=True) # Fill in price data with interpolations
-
-# # REMOVE all data before t_legit_from
-# # This is because the number of Filler rows is greater than the real data rows
-# # It seems somewhat common for initial
-# rows_removed = np.sum(data[pair]['time'] < t_legit_from)
-# df = df[df.time >= t_legit_from]
-
-# data[pair] = df
-# total_gaps_filled += len(new_rows)
-# print(f'[{pair:9s}] Added {len(new_rows):5} rows to fill in gaps. Removed initial {rows_removed:5} spotty rows.')
