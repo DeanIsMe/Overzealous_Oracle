@@ -263,8 +263,8 @@ def GetHourlyDfCryptowatch(coins, numHours):
 
             if points_recv > 0:
                 this_df = pd.DataFrame(ohlc_resp[period_str], columns = ohlc_col_headers)
-                this_df.index = pd.to_datetime(this_df['time'],unit='s')
-                this_df.index.name='datetime'
+                this_df.set_index(inplace=True, keys=pd.DatetimeIndex(pd.to_datetime(this_df['time'],unit='s')))
+                #this_df.index.name='datetime'
                 this_df.pop('quote_volume')
                 this_df.pop('open')
                 
@@ -321,7 +321,7 @@ def ReadKrakenCsv(csv_dir):
     #csv_dir = 'C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT'
     data_hist = {}
 
-    timestep = 3600
+    timestep = int(3600)
     time_modified = None
     time_last_data = None
 
@@ -335,8 +335,8 @@ def ReadKrakenCsv(csv_dir):
             pair_df = pd.read_csv(os.path.join(csv_dir, filename), header=None, \
                 names=['time','open','high','low','close','volume','trades'], \
                     dtype={'time':np.int64, 'trades':np.int64})
-            pair_df.index = pd.to_datetime(pair_df['time'], unit='s')
-            pair_df.index.name='datetime'
+            pair_df.set_index(inplace=True, keys=pd.DatetimeIndex(pd.to_datetime(pair_df['time'], unit='s')))
+            #pair_df.index.name='datetime'
             pair_df.pop('open')
             pair_df.pop('trades')
             pair_df['filler'] = False # Indicates whether each row was generated to fill a gap
@@ -387,45 +387,67 @@ def FillDataGaps(data, timestep):
         [tuple]: (data, total_gaps_filled)
     """
     printmd("## Filling data gaps")
+    timestep = int(timestep)
     printmd(f'timestep={timestep}. {len(data)} pairs')
     total_gaps_filled = 0
     for pair in data.keys():
 
-        t_ser = data[pair]['time']
+        df = data[pair]
+        rows_initial = len(df.index)
+
+        t_ser = df['time']
 
         t = int(t_ser.iloc[0])
         t -= t%timestep
 
         t_end = t_ser.iloc[-1]
 
-        t_ser.index = t_ser.values
-
         # Step through every expected time & record those that are missing
-        new_rows = []
+        new_times = []
+        legit_cnt = 0 # +1 for true data, -1 for filler data
+        t_legit_from = t # Saves when legit_cnt last went positive
         while t < t_end:
-            if t not in t_ser:
-                new_rows.append({'time':t})
-            t += timestep
+            data_found = t in t_ser.values
 
-        if len(new_rows) == 0:
+            if legit_cnt == 0 and data_found:
+                t_legit_from = t
+                new_times = []
+            legit_cnt += 1 if data_found else -1
+            
+            if not data_found:
+                new_times.append(t)
+            t += timestep
+        
+        if legit_cnt <= 0:
+            t_legit_from = t_end + timestep # All data is invalid
+            new_times = []
+        
+        if len(new_times) == 0:
             print(f'[{pair:9s}] No gaps in data. Leaving as-in.')
             continue
         
-        newdf = pd.DataFrame(new_rows)
-        newdf.index = pd.to_datetime(newdf['time'], unit='s')
-        newdf.index.name='datetime'
+        newdf = pd.DataFrame(new_times, columns=['time'])
+        newdf.set_index(inplace=True, keys=pd.DatetimeIndex(pd.to_datetime(newdf['time'], unit='s')))
+        #newdf.index.name='datetime'
         # Assume volume is 0 during these gaps.
         # All prices will be interpolated
         newdf['volume'] = 0
         newdf['filler'] = True # All of these rows are filler rows
 
-        df = pd.concat([data[pair], newdf])
+        # REMOVE all data before t_legit_from
+        # This is because the number of Filler rows is greater than the real data rows
+        # It seems somewhat common for initial
+        df = df[df.time >= t_legit_from]
+        rows_removed = rows_initial - len(df.index)
+
+        df = pd.concat([df, newdf])
         df.sort_index(inplace=True)
         df.interpolate(inplace=True) # Fill in price data with interpolations
+        rows_remaining = len(df.index)
 
         data[pair] = df
-        total_gaps_filled += len(new_rows)
-        print(f'[{pair:9s}] Added {len(new_rows)} rows to fill in gaps')
+        total_gaps_filled += len(new_times)
+        print(f'[{pair:9s}] Had {rows_initial:6} rows. Removed initial {rows_removed:6} spotty rows. Added {len(new_times):6} rows to fill in gaps. Now {rows_remaining:6} rows remain.')
 
     return data, total_gaps_filled
 
@@ -506,9 +528,73 @@ if __name__ == '__main__':
 
     #dfs = GetHourlyDf(filename, ['ETH'], 100)
 
-    #ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT')
+    ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT')
 
     #FillFileDataGaps(filename)
 
+#%%
+# os.chdir(os.path.dirname(os.path.dirname(__file__)))
+# filename = './indata/2021-09-30_price_data_60m.pickle'
+
+# filehandler = open(filename, 'rb')
+# package = pickle.load(filehandler)
+# data = package['data']
+# filehandler.close()
 
 # %%
+# pair='ethusd'
+# timestep = 3600
+# total_gaps_filled = 0
+# df = data[pair]
+
+# df = df[df['filler'] == False] # Remove any filler rows that might already exist
+
+# t_ser = df['time']
+
+# t = int(t_ser.iloc[0])
+# t -= t%timestep
+
+# t_end = t_ser.iloc[-1]
+
+# # Step through every expected time & record those that are missing
+# new_rows = []
+# legit_cnt = 0 # +1 for true data, -1 for filler data
+# t_legit_from = t # Saves when legit_cnt last went positive
+# while t < t_end:
+#     data_found = t in t_ser.values
+
+#     if legit_cnt == 0 and data_found:
+#         t_legit_from = t
+#     legit_cnt += 1 if data_found else -1
+    
+#     if not data_found:
+#         new_rows.append({'time':t})
+#     t += timestep
+
+
+
+# if len(new_rows) == 0:
+#     print(f'[{pair:9s}] No gaps in data. Leaving as-in.')
+#     continue
+
+# newdf = pd.DataFrame(new_rows)
+# newdf.index = pd.to_datetime(newdf['time'], unit='s')
+# newdf.index.name='datetime'
+# # Assume volume is 0 during these gaps.
+# # All prices will be interpolated
+# newdf['volume'] = 0
+# newdf['filler'] = True # All of these rows are filler rows
+
+# df = pd.concat([data[pair], newdf])
+# df.sort_index(inplace=True)
+# df.interpolate(inplace=True) # Fill in price data with interpolations
+
+# # REMOVE all data before t_legit_from
+# # This is because the number of Filler rows is greater than the real data rows
+# # It seems somewhat common for initial
+# rows_removed = np.sum(data[pair]['time'] < t_legit_from)
+# df = df[df.time >= t_legit_from]
+
+# data[pair] = df
+# total_gaps_filled += len(new_rows)
+# print(f'[{pair:9s}] Added {len(new_rows):5} rows to fill in gaps. Removed initial {rows_removed:5} spotty rows.')
