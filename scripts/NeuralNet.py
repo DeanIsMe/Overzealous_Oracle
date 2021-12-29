@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 import tensorflow as tf
 from tensorflow import keras
+import tensorflow.keras.layers as layers # allow completion to work
 
 from DataTypes import TrainMetrics
 import pandas as pd
@@ -290,12 +291,12 @@ def MakeNetwork(r):
     
     # Keras functional API
     # Input
-    feeds[FeedLoc.conv] = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.conv])), name='conv_feed')
+    feeds[FeedLoc.conv] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.conv])), name='conv_feed')
 
     # Make conv layers
     convLayers = []
     for i in range(convConf['layerCount']):
-        convLayers.append(keras.layers.Conv1D(
+        convLayers.append(layers.Conv1D(
             filters=convConf['convFilters'][i], 
             kernel_size=convConf['convKernelSz'][i],
             dilation_rate=convConf['convDilation'][i],
@@ -308,13 +309,13 @@ def MakeNetwork(r):
     elif convConf['layerCount'] == 1:
         conv_out = convLayers[0]
     elif convConf['layerCount'] > 1:
-        conv_out = keras.layers.concatenate(convLayers)
+        conv_out = layers.concatenate(convLayers)
 
 
     # Make the LSTM layers
     # LSTM input
-    feeds[FeedLoc.lstm] = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
-    lstm_input = keras.layers.concatenate([conv_out, feeds[FeedLoc.lstm]])
+    feeds[FeedLoc.lstm] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
+    lstm_input = layers.concatenate([conv_out, feeds[FeedLoc.lstm]])
 
     lstmLayerCount = len(r.config['neurons'])
     
@@ -323,7 +324,7 @@ def MakeNetwork(r):
         is_last_layer = (i == lstmLayerCount - 1)
 
         lstm_args = {
-            'units' : neurons,
+            'units' : neurons, # hidden layer size, & output size
             'activation' : 'tanh',
             'stateful' : False,
             'return_sequences' : True, # I'm including output values for all time steps, so always true
@@ -332,14 +333,14 @@ def MakeNetwork(r):
         # if is_first_layer and convLayerCount == 0:
         #     lstm_args['input_shape'] = (None, r.inFeatureCount)
         this_input = lstm_input if is_first_layer else lstm_out
-        lstm_out = keras.layers.LSTM(**lstm_args)(this_input)
+        lstm_out = layers.LSTM(**lstm_args)(this_input)
     
     # Dense layers
     # Dense input
-    feeds[FeedLoc.dense] = keras.layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
-    dense_input = keras.layers.concatenate([lstm_out, feeds[FeedLoc.dense]])
+    feeds[FeedLoc.dense] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
+    dense_input = layers.concatenate([lstm_out, feeds[FeedLoc.dense]])
 
-    main_output = keras.layers.Dense(r.outFeatureCount, name='final_output')(dense_input)
+    main_output = layers.Dense(r.outFeatureCount, name='final_output')(dense_input)
     r.model = keras.models.Model(inputs=feeds, outputs=[main_output])
 
     # mape = mean absolute percentage error
