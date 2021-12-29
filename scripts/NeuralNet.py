@@ -50,10 +50,10 @@ class ValidationCb(tf.keras.callbacks.Callback):
         windowSz = 10
         window = np.ones((windowSz,))/windowSz
         for sample in range(outTarget.shape[0]):
-            for outTarget in range(outTarget.shape[-1]):
-                smoothed = np.convolve(outTarget[sample,:,outTarget], window, mode='valid')
+            for outIdx in range(outTarget.shape[-1]):
+                smoothed = np.convolve(outTarget[sample,:,outIdx], window, mode='valid')
                 totalDiff += np.sum(np.abs(np.diff(smoothed)))
-                diffCount += outTarget[sample,:,outTarget].size-1
+                diffCount += outTarget[sample,:,outIdx].size-1
         avgDiffTarget = totalDiff / diffCount
         self.avgDiffUpper = avgDiffTarget * 0.25 # above this, there's no penalisation
         self.avgDiffLower = avgDiffTarget * 0.1 # Below this, the penalty is a maximum

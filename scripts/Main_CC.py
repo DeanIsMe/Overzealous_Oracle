@@ -62,7 +62,8 @@ def PrintInDataRanges(dfs):
     for i, q in enumerate(quantiles):
         series = []
         for df in dfs:
-            ser = df.quantile(q=q)
+            # bool columns break quantile, so exclude them
+            ser = df.loc[:,df.dtypes != bool].quantile(q=q)
             ser.name = df.name
             series.append(ser)
         dfq = pd.DataFrame(series)
@@ -131,7 +132,7 @@ feedLocFeatures = [[] for i in range(FeedLoc.LEN)]
 # Determine which features go into which feed locations
 for loc in range(FeedLoc.LEN):
     # Find the features that are in this feed location
-    feedLocFeatures[loc] = np.zeros_like(featureList, dtype=np.bool)
+    feedLocFeatures[loc] = np.zeros_like(featureList, dtype=bool)
     for fidx, feature in enumerate(featureList):
         for featureMatch in r.config['feedLoc'][loc]:
             if featureMatch in feature:
