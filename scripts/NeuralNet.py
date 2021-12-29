@@ -10,13 +10,17 @@ import matplotlib.pyplot as plt
 
 import tensorflow as tf
 from tensorflow import keras
-import tensorflow.keras.layers as layers # allow completion to work
+import tensorflow.keras.layers as layers
+import tensorflow.keras.models as models
+from tensorflow.python.keras.backend import dropout # allow completion to work
 
 from DataTypes import TrainMetrics
 import pandas as pd
 import time
 import os
 #from ClockworkRNN import CWRNN
+
+
 
 
 from scripts.DataTypes import FeedLoc
@@ -251,6 +255,15 @@ def PlotTrainMetrics(r, subplot=False):
 
 #==========================================================================
 def PrepConvConfig(r):
+    """I made fairly flexible system for specifying the convolutional layer
+    config. This function interprets the config and outputs explicit numbers for each layer.
+
+    Args:
+        r ([type]): [description]
+
+    Returns:
+        [dict]: convConf indicates the dilation, filter count and kernel size for each convolutional layer
+    """
     convConf = dict()
     convConf['convDilation'] = r.config['convDilation']
     convConf['convFilters']  = r.config['convFilters']  
@@ -270,6 +283,53 @@ def PrepConvConfig(r):
         convConf['convKernelSz'] = [r.config['convKernelSz']] * convLayerCount
     
     return convConf
+
+
+#==========================================================================
+def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0., 
+    kernel_size:int=None, dilation:int=None, stride:int=0, batch_norm:bool=True, name=None):
+    # dropout
+    # CNN or LSTM
+    # avg pool with stride
+    # batch normalization
+    this_layer = layer_input
+
+    if type.lower() == 'conv':
+        if dropout_rate > 0.:
+            this_layer = layers.Dropout(dropout_rate)(this_layer)
+        conv_args = {
+            'filters' : out_width, # filter count = number of outputs
+            'kernel_size' : kernel_size, # size of all filters
+            'dilation_rate' : dilation, # factor in how far back to look
+            # input_shape=(None, r.inFeatureCount),
+            'use_bias' : True, 
+            'padding' : 'causal', # causal; don't look into the future
+            'activation' : 'relu',
+            'name' : name
+        }
+        this_layer = layers.Conv1D(**conv_args)(this_layer)
+    elif type.lower() == 'lstm':
+        lstm_args = {
+            'units' : out_width, # hidden layer size, & output size
+            'dropout' : dropout_rate, # incorporated into the LSTM
+            'activation' : 'tanh',
+            'stateful' : False,
+            'return_sequences' : True, # I'm including output values for all time steps, so always true
+            'name' : name
+        }
+        this_layer = layers.LSTM(**lstm_args)(this_layer)
+    
+    # avg pool with stride
+    # to reduce data in temporal dimension
+    if stride > 0.:
+        this_layer = layers.AvgPool1D(pool_size=stride, strides=stride, padding='same')(this_layer)
+    
+    # batch normalization
+
+    this_layer = layers.BatchNormalization()(this_layer)
+
+    return this_layer
+
 
 #==========================================================================
 def MakeNetwork(r):
@@ -296,13 +356,10 @@ def MakeNetwork(r):
     # Make conv layers
     convLayers = []
     for i in range(convConf['layerCount']):
-        convLayers.append(layers.Conv1D(
-            filters=convConf['convFilters'][i], 
-            kernel_size=convConf['convKernelSz'][i],
-            dilation_rate=convConf['convDilation'][i],
-            # input_shape=(None, r.inFeatureCount),
-            use_bias=True, padding='causal',
-            name=f"conv1d_{i}_{convConf['convDilation'][i]}x")(feeds[FeedLoc.conv]))
+        convLayers.append(MakeLayerModule('conv', feeds[FeedLoc.conv], out_width=convConf['convFilters'][i],
+            kernel_size=convConf['convKernelSz'][i], dilation=convConf['convDilation'][i],
+            dropout_rate=r.config['dropout'],
+            name= f"conv1d_{i}_{convConf['convDilation'][i]}x"))
 
     if convConf['layerCount'] == 0:
         conv_out = feeds[FeedLoc.conv]
@@ -315,7 +372,7 @@ def MakeNetwork(r):
     # Make the LSTM layers
     # LSTM input
     feeds[FeedLoc.lstm] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
-    lstm_input = layers.concatenate([conv_out, feeds[FeedLoc.lstm]])
+    lstm_input = layers.concatenate([conv_out, feeds[FeedLoc.lstm]], name='concat_pre_lstm')
 
     lstmLayerCount = len(r.config['neurons'])
     
@@ -323,17 +380,11 @@ def MakeNetwork(r):
         is_first_layer = (i == 0)
         is_last_layer = (i == lstmLayerCount - 1)
 
-        lstm_args = {
-            'units' : neurons, # hidden layer size, & output size
-            'activation' : 'tanh',
-            'stateful' : False,
-            'return_sequences' : True, # I'm including output values for all time steps, so always true
-            'dropout' : r.config['dropout']
-        }
-        # if is_first_layer and convLayerCount == 0:
-        #     lstm_args['input_shape'] = (None, r.inFeatureCount)
         this_input = lstm_input if is_first_layer else lstm_out
-        lstm_out = layers.LSTM(**lstm_args)(this_input)
+
+        # !@#$
+        lstm_out = MakeLayerModule('lstm', this_input, out_width=neurons, dropout_rate=r.config['dropout'],
+            name= f'lstm_{neurons}')
     
     # Dense layers
     # Dense input
@@ -341,7 +392,8 @@ def MakeNetwork(r):
     dense_input = layers.concatenate([lstm_out, feeds[FeedLoc.dense]])
 
     main_output = layers.Dense(r.outFeatureCount, name='final_output')(dense_input)
-    r.model = keras.models.Model(inputs=feeds, outputs=[main_output])
+    
+    r.model = models.Model(inputs=feeds, outputs=[main_output])
 
     # mape = mean absolute percentage error
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error'])
@@ -355,7 +407,7 @@ def MakeNetwork(r):
 def PrintNetwork(r):
     r.model.summary()
 
-    keras.utils.plot_model(r.model, to_file='model.png', show_shapes=True)
+    tf.keras.utils.plot_model(r.model, to_file='model.png', show_shapes=True)
 
     from IPython.display import Image, display
     img = Image('model.png')
@@ -398,7 +450,11 @@ def TrainNetwork(r, inData, outData, final=True):
 #    callbacks.append(checkpoint)
 
 #    callbacks += [keras.callbacks.TensorBoard(log_dir='./logs2', histogram_freq=0, batch_size=32, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)]
-    print(f'\nStarting training. Max {epochsLeft} epochs')
+    if r.trainMetrics.curEpoch == 0:
+        print(f"\nStarting training. Max {r.config['epochs']} epochs")
+    else:
+        print(f"\nStarting training. At epoch {r.trainMetrics.curEpoch}. Max {r.config['epochs']} epochs. {epochsLeft} remaining.")
+        
     
     trainX = [arr[:,r.tInd['train'],:] for arr in inData]
     trainY = outData[:, r.tInd['train']]

@@ -18,6 +18,8 @@ Created on Dec 17  2017
 %matplotlib widget
 
 import os
+
+import tensorflow
 os.chdir(os.path.dirname(os.path.dirname(__file__)))
 print(f'Working directory is "{os.getcwd()}"')
 
@@ -195,8 +197,8 @@ if single:
     r.batchRunName = ''
     
     # !@#$
-    r.config['neurons'] = [128, 64]
-    r.config['epochs'] = 8
+    #r.config['neurons'] = [64]
+    #r.config['epochs'] = 8
     
     # Scale the input and output data
     thisInData = [arr * r.config['inScale'] for arr in inData]
@@ -210,9 +212,10 @@ if single:
         NeuralNet.MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
 
     NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
-
     
-else:
+print('DONE')
+#%%
+if not single:
     # *****************************************************************************
     # Batch Run
     #
@@ -246,7 +249,7 @@ else:
         # Change for batch2
         
         for idx1, val1 in enumerate(bat1Val):
-            KB.clear_session() 
+            tensorflow.keras.backend.clear_session() 
             results[idx2][idx1] = copy.deepcopy(startR)
             r = results[idx2][idx1]
             
@@ -350,3 +353,4 @@ else:
     #os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
 
 print('DONE')
+# %%
