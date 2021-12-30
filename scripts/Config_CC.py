@@ -47,6 +47,7 @@ def GetConfig():
     config['lstmWidth'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
     # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
     # The num of conv layers will be the greatest number of valid layers
+    # If any parameter is empty ([] or 0), then there will be no convolutional layers
     config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
     config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
     config['convKernelSz'] = 10 # Kernel size per filter
@@ -91,8 +92,8 @@ def GetConfig():
     # Input data and output data are divided by 90th percentile. Then, they
     # are multiplied by the 'scale'. This has a massive impact on the training
     # and results
-    config['inScale'] = 1
-    config['outScale'] = 1
+    config['inScale'] = 1.
+    config['outScale'] = 1.
 
     # feedLoc indicates the location at which the data feature will be fed into the network
     # Note that a feature can be used at multiple feed locations

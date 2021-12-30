@@ -269,11 +269,18 @@ def PrepConvConfig(r):
     convConf['convFilters']  = r.config['convFilters']  
     convConf['convKernelSz'] = r.config['convKernelSz']
 
-    convLayerCount = max(
-        1 if isinstance(convConf['convDilation'], int) else len(convConf['convDilation']),
-        1 if isinstance(convConf['convFilters'], int)  else len(convConf['convFilters']),
-        1 if isinstance(convConf['convKernelSz'], int) else len(convConf['convKernelSz']),
-    )
+    # Check for zero layers
+    if not (convConf['convDilation'] and convConf['convFilters'] and convConf['convKernelSz']):
+        # at least 1 of these parameters are empty
+        # there are no convolutional layers
+        convLayerCount = 0
+    else:
+        convLayerCount = max(
+            1 if isinstance(convConf['convDilation'], int) else len(convConf['convDilation']),
+            1 if isinstance(convConf['convFilters'], int)  else len(convConf['convFilters']),
+            1 if isinstance(convConf['convKernelSz'], int) else len(convConf['convKernelSz']),
+        )
+    
     convConf['layerCount'] = convLayerCount
     if isinstance(r.config['convDilation'], int):
         convConf['convDilation'] = [r.config['convDilation']] * convLayerCount
@@ -356,46 +363,53 @@ def MakeNetwork(r):
     feeds = [[] for i in range(FeedLoc.LEN)]
     
     # Keras functional API
-    # Input
+    # Input feeds (applied at different locations)
     feeds[FeedLoc.conv] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.conv])), name='conv_feed')
+    feeds[FeedLoc.lstm] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
+    feeds[FeedLoc.dense] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
+    feed_lens = [feeds[i].shape[-1] for i in range(FeedLoc.LEN)]
 
     # Make conv layers
-    convLayers = []
-    for i in range(convConf['layerCount']):
-        convLayers.append(MakeLayerModule('conv', feeds[FeedLoc.conv], out_width=convConf['convFilters'][i],
-            kernel_size=convConf['convKernelSz'][i], dilation=convConf['convDilation'][i],
-            dropout_rate=r.config['dropout'],
-            name= f"conv1d_{i}_{convConf['convDilation'][i]}x"))
+    if feed_lens[FeedLoc.conv] > 0:
+        convLayers = []
+        for i in range(convConf['layerCount']):
+            convLayers.append(MakeLayerModule('conv', feeds[FeedLoc.conv], out_width=convConf['convFilters'][i],
+                kernel_size=convConf['convKernelSz'][i], dilation=convConf['convDilation'][i],
+                dropout_rate=r.config['dropout'],
+                name= f"conv1d_{i}_{convConf['convDilation'][i]}x"))
 
-    if convConf['layerCount'] == 0:
-        conv_out = feeds[FeedLoc.conv]
-    elif convConf['layerCount'] == 1:
-        conv_out = convLayers[0]
-    elif convConf['layerCount'] > 1:
-        conv_out = layers.concatenate(convLayers)
+        if convConf['layerCount'] == 0:
+            this_layer = feeds[FeedLoc.conv]
+        elif convConf['layerCount'] == 1:
+            this_layer = convLayers[0]
+        elif convConf['layerCount'] > 1:
+            this_layer = layers.concatenate(convLayers)
 
-
-    # Add LSTM feed
-    feeds[FeedLoc.lstm] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
-    this_layer = layers.concatenate([conv_out, feeds[FeedLoc.lstm]], name='concat_bottleneck')
+        # Add LSTM feed
+        if feed_lens[FeedLoc.lstm] > 0:
+            this_layer = layers.concatenate([this_layer, feeds[FeedLoc.lstm]], name='concat_bottleneck')
+    else:
+        # No convolutional input
+        this_layer = feeds[FeedLoc.lstm]
 
     # Bottleneck layer (to reduce size going to LSTM)
     bnw = r.config['bottleneckWidth']
-    this_layer = MakeLayerModule('dense', this_layer, out_width=bnw, dropout_rate=r.config['dropout'],
-        name= f"bottleneck_{bnw}")
+    if bnw > 0:
+        this_layer = MakeLayerModule('dense', this_layer, out_width=bnw, dropout_rate=r.config['dropout'],
+            name= f"bottleneck_{bnw}")
 
     # Make the LSTM layers
     for i, neurons in enumerate(r.config['lstmWidth']):
-        this_layer = MakeLayerModule('lstm', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
-            name= f'lstm_{neurons}')
+        if neurons > 0:
+            this_layer = MakeLayerModule('lstm', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
+                name= f'lstm_{neurons}')
     
+    # Add dense feed
+    if feed_lens[FeedLoc.dense] > 0:
+        this_layer = layers.concatenate([this_layer, feeds[FeedLoc.dense]])
+
     # Dense layer
-
-    # Dense input
-    feeds[FeedLoc.dense] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
-    dense_input = layers.concatenate([this_layer, feeds[FeedLoc.dense]])
-
-    main_output = layers.Dense(units=r.outFeatureCount, activation='softmax', name='final_output')(dense_input)
+    main_output = layers.Dense(units=r.outFeatureCount, activation='softmax', name='final_output')(this_layer)
     
     r.model = models.Model(inputs=feeds, outputs=[main_output])
 
