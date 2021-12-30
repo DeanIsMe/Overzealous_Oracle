@@ -49,6 +49,8 @@ class ValidationCb(tf.keras.callbacks.Callback):
     
     
     def setup(self, inData, outTarget, trainMetrics, patience, maxEpochs, modelEpoch):
+        # inData covers all of the time steps of outData, PLUS some earlier time steps
+        # these earlier timesteps are used for building state
         self.inData = inData # The input data that will be used for validation
         self.outTarget = np.array(outTarget) # The target output. A perfect prediction model would predict these values
         self.targetSize = outTarget.size # Number of points
@@ -107,7 +109,8 @@ class ValidationCb(tf.keras.callbacks.Callback):
             self.epochTimeHist.append(self.startTime)
 
         predictY = self.model.predict(self.inData, batch_size=100)
-        # Grab only the relevant time steps
+        # Note that the prediction has some initial period to build up state,
+        # then the actual prediction (len=targetTimeSteps)
         err = predictY[:,-self.targetTimeSteps:,:] - self.outTarget
         
         val_abs_err = np.sum(np.abs(err)) / self.targetSize
@@ -474,7 +477,7 @@ def TrainNetwork(r, inData, outData, final=True):
     # Callback to validate data
     validationCb = ValidationCb()
     valI = r.tInd['val'] # Validation indices
-    startPredict = max(0, valI.min()-100) # This number of time steps are used to build state before starting predictions
+    startPredict = max(0, valI.min()-500) # This number of time steps are used to build state before starting predictions
 
     valInData = [arr[:,startPredict:valI.max()+1,:] for arr in inData]
     validationCb.setup(valInData, outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'], r.config['epochs'], r.modelEpoch)
