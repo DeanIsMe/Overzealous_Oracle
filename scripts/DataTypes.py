@@ -69,6 +69,7 @@ class ModelResult():
         self.neutralTrainAbsErr = None # train error if output was 'always neutral'
         self.neutralTrainSqErr = None # train error if output was 'always neutral'
         self.trainScore = None # neutralTrainAbsErr / trainAbsErr
+        self.modelEpoch = 0 # The epochs trained for the current model weights
         
         self.neutralValAbsErr = None
         self.neutralValSqErr = None

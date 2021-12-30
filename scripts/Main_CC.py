@@ -104,7 +104,7 @@ printmd('### Imports DONE')
 # %% 
 # GET DATA
 
-numHours = 24*365*3
+numHours = 24*365*5
 dfs = cgd.GetHourlyDf('./indata/2021-09-30_price_data_60m.pickle', r.coinList, numHours) # a list of data frames
 
 printmd('### Get data DONE')

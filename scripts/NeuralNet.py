@@ -48,7 +48,7 @@ class ValidationCb(tf.keras.callbacks.Callback):
         pass
     
     
-    def setup(self, inData, outTarget, trainMetrics, patience, maxEpochs):
+    def setup(self, inData, outTarget, trainMetrics, patience, maxEpochs, modelEpoch):
         self.inData = inData # The input data that will be used for validation
         self.outTarget = np.array(outTarget) # The target output. A perfect prediction model would predict these values
         self.targetSize = outTarget.size # Number of points
@@ -71,6 +71,16 @@ class ValidationCb(tf.keras.callbacks.Callback):
         self.avgDiffUpper = avgDiffTarget * 0.25 # above this, there's no penalisation
         self.avgDiffLower = avgDiffTarget * 0.1 # Below this, the penalty is a maximum
         
+        # Adjust the trainMetrics according to the actual epoch of the model
+        # This is required because 'reverting' can cause the model epoch to jump backwards
+        if modelEpoch > 0:
+            trainMetrics.curEpoch = modelEpoch
+            trainMetrics.absErrVal = trainMetrics.absErrVal[:modelEpoch]
+            trainMetrics.lossVal = trainMetrics.lossVal[:modelEpoch]
+            trainMetrics.lossTrain = trainMetrics.lossTrain[:modelEpoch]
+            trainMetrics.absErrTrain = trainMetrics.absErrTrain[:modelEpoch]
+            trainMetrics.fitness = trainMetrics.fitness[:modelEpoch]
+
         self.trainMetrics = trainMetrics # Links to the r.trainMetrics
 
         # Tracking the best result:
@@ -428,6 +438,7 @@ def MakeNetwork(r):
     main_output = layers.Dense(units=r.outFeatureCount, activation='linear', name='final_output')(this_layer)
     
     r.model = models.Model(inputs=feeds, outputs=[main_output])
+    r.modelEpoch = 0
 
     # mape = mean absolute percentage error
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error'])
@@ -466,10 +477,10 @@ def TrainNetwork(r, inData, outData, final=True):
     startPredict = max(0, valI.min()-100) # This number of time steps are used to build state before starting predictions
 
     valInData = [arr[:,startPredict:valI.max()+1,:] for arr in inData]
-    validationCb.setup(valInData, outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'], r.config['epochs'])
+    validationCb.setup(valInData, outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'], r.config['epochs'], r.modelEpoch)
     
     # The model could be partially trained
-    epochsLeft = r.config['epochs'] - r.trainMetrics.curEpoch
+    epochsLeft = r.config['epochs'] - r.modelEpoch
     if epochsLeft == 0:
         print('\r\n\n\nERROR! NO EPOCHS REMAINING ON TRAINING!')
         return
@@ -484,10 +495,10 @@ def TrainNetwork(r, inData, outData, final=True):
 #    callbacks.append(checkpoint)
 
 #    callbacks += [keras.callbacks.TensorBoard(log_dir='./logs2', histogram_freq=0, batch_size=32, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)]
-    if r.trainMetrics.curEpoch == 0:
+    if r.modelEpoch == 0:
         print(f"\nStarting training. Max {r.config['epochs']} epochs")
     else:
-        print(f"\nStarting training. At epoch {r.trainMetrics.curEpoch}. Max {r.config['epochs']} epochs. {epochsLeft} remaining.")
+        print(f"\nStarting training. At epoch {r.modelEpoch}. Max {r.config['epochs']} epochs. {epochsLeft} remaining.")
         
     
     trainX = [arr[:,r.tInd['train'],:] for arr in inData]
@@ -510,10 +521,13 @@ def TrainNetwork(r, inData, outData, final=True):
     r.trainTime = end-start
     print(f'Training Time (h:m:s)= {SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
     
+    r.modelEpoch = r.trainMetrics.curEpoch
     if final and r.config['revertToBest']:
         if validationCb.bestEpoch > 0:
             print(f'Reverting to the model with best validation (epoch {validationCb.bestEpoch})')
             r.model.set_weights(validationCb.bestWeights)
+            # Note that r.trainMetrics will still have curEpoch and other history for the full training
+            r.modelEpoch = validationCb.bestEpoch
     
     PlotTrainMetrics(r)
 
