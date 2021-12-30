@@ -294,9 +294,13 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
     # batch normalization
     this_layer = layer_input
 
-    if type.lower() == 'conv':
+    if type.lower() == 'dense':
         if dropout_rate > 0.:
-            this_layer = layers.Dropout(dropout_rate)(this_layer)
+            this_layer = layers.Dropout(dropout_rate, name='do_' + name)(this_layer)
+        this_layer = layers.Dense(units=out_width, activation='relu', name=name)(this_layer)
+    elif type.lower() == 'conv':
+        if dropout_rate > 0.:
+            this_layer = layers.Dropout(dropout_rate, name='do_' + name)(this_layer)
         conv_args = {
             'filters' : out_width, # filter count = number of outputs
             'kernel_size' : kernel_size, # size of all filters
@@ -318,15 +322,17 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
             'name' : name
         }
         this_layer = layers.LSTM(**lstm_args)(this_layer)
+    else:
+        raise Exception(f"MakeLayerModule type={type} is not recognized.")
     
     # avg pool with stride
     # to reduce data in temporal dimension
     if stride > 0.:
-        this_layer = layers.AvgPool1D(pool_size=stride, strides=stride, padding='same')(this_layer)
+        this_layer = layers.AvgPool1D(pool_size=stride, strides=stride, padding='same', name='pl_' + name)(this_layer)
     
     # batch normalization
 
-    this_layer = layers.BatchNormalization()(this_layer)
+    this_layer = layers.BatchNormalization(name='bn_' + name)(this_layer)
 
     return this_layer
 
@@ -369,29 +375,27 @@ def MakeNetwork(r):
         conv_out = layers.concatenate(convLayers)
 
 
-    # Make the LSTM layers
-    # LSTM input
+    # Add LSTM feed
     feeds[FeedLoc.lstm] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
-    lstm_input = layers.concatenate([conv_out, feeds[FeedLoc.lstm]], name='concat_pre_lstm')
+    this_layer = layers.concatenate([conv_out, feeds[FeedLoc.lstm]], name='concat_bottleneck')
 
-    lstmLayerCount = len(r.config['neurons'])
-    
-    for i, neurons in enumerate(r.config['neurons']):
-        is_first_layer = (i == 0)
-        is_last_layer = (i == lstmLayerCount - 1)
+    # Bottleneck layer (to reduce size going to LSTM)
+    bnw = r.config['bottleneckWidth']
+    this_layer = MakeLayerModule('dense', this_layer, out_width=bnw, dropout_rate=r.config['dropout'],
+        name= f"bottleneck_{bnw}")
 
-        this_input = lstm_input if is_first_layer else lstm_out
-
-        # !@#$
-        lstm_out = MakeLayerModule('lstm', this_input, out_width=neurons, dropout_rate=r.config['dropout'],
+    # Make the LSTM layers
+    for i, neurons in enumerate(r.config['lstmWidth']):
+        this_layer = MakeLayerModule('lstm', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
             name= f'lstm_{neurons}')
     
-    # Dense layers
+    # Dense layer
+
     # Dense input
     feeds[FeedLoc.dense] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
-    dense_input = layers.concatenate([lstm_out, feeds[FeedLoc.dense]])
+    dense_input = layers.concatenate([this_layer, feeds[FeedLoc.dense]])
 
-    main_output = layers.Dense(r.outFeatureCount, name='final_output')(dense_input)
+    main_output = layers.Dense(units=r.outFeatureCount, activation='softmax', name='final_output')(dense_input)
     
     r.model = models.Model(inputs=feeds, outputs=[main_output])
 

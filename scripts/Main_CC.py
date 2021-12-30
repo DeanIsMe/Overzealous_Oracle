@@ -197,8 +197,8 @@ if single:
     r.batchRunName = ''
     
     # !@#$
-    #r.config['neurons'] = [64]
-    #r.config['epochs'] = 8
+    #r.config['lstmWidth'] = [64]
+    r.config['epochs'] = 8
     
     # Scale the input and output data
     thisInData = [arr * r.config['inScale'] for arr in inData]

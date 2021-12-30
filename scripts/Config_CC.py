@@ -40,14 +40,15 @@ def GetConfig():
 #     of epochs of no improvements before training is stopped (patience)
     
     config['dropout'] = 0.1 # Dropout_rate of layer applied before each LSTM or Conv1D. Set to 0 to disable
-#    
-#        
-#    # Neural Network
-    config['neurons'] = [128, 64] # Number of neurons in LSTM
+   
+     
+    # Neural Network
+    config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM to reduce the LSTM size
+    config['lstmWidth'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
     # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
     # The num of conv layers will be the greatest number of valid layers
     config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
-    config['convFilters'] = [100,100,100,100,80,60,40,20] # Number of filters per layer. List or scalar
+    config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
     config['convKernelSz'] = 10 # Kernel size per filter
 
     config['epochs'] = 64 # Number of complete passes of the data (subject to early stopping)
