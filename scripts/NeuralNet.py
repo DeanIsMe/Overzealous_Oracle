@@ -20,18 +20,27 @@ import time
 import os
 #from ClockworkRNN import CWRNN
 
-
-
-
 from scripts.DataTypes import FeedLoc
-       
+
+from IPython.display import Markdown, display
+def printmd(string, color=None):
+    if color is None:
+        display(Markdown(string))
+    else:
+        colorstr = "<span style='color:{}'>{}</span>".format(color, string)
+        display(Markdown(colorstr))
+
+def SecToHMS(t):
+    """Makes a string like ' 2:15:36' to represent some duration, given in seconds. 8 chars"""
+    return f"{t//3600.:2.0f}:{(t%3600)//60.:02.0f}:{t%60.:02.0f}"
+
 #==========================================================================
 class ValidationCb(tf.keras.callbacks.Callback):
     """
-    This callback is used to validate/test the model after each epoch. Keras
-    supports this functionality with validation_data in .fit(), but a downside
+    This callback is used to validate/test the model after each epoch. 
+    Note that Keras supports this functionality with validation_data in .fit(), but a downside
     with that for a LSTM is that it starts the validation without building
-    state. This builds state before the prediction range - so the validation
+    state. Hence, I made this custom callback. This builds state before the prediction range - so the validation
     is a better representation of its actual usage. Allows for better-informed
     early stopping.
     """
@@ -76,16 +85,19 @@ class ValidationCb(tf.keras.callbacks.Callback):
         self.stopped_epoch = 0
 
         self.startTime = time.time()
-        self.prevEpochTime = time.time()
         self.prevPrintTime = time.time()
-        self.prevEtaPrintTime = time.time()
+        self.printCount = 0 # the number of times we've printed
         self.epochTimeHist = [] # a list of the previous ~3 epoch training durations
            
     #==========================================================================
     def on_epoch_end(self, epoch, logs={}):
         self.trainMetrics.curEpoch += 1
         thisEpoch = self.trainMetrics.curEpoch
+        if not self.epochTimeHist:
+            self.epochTimeHist.append(self.startTime)
+
         predictY = self.model.predict(self.inData, batch_size=100)
+        # Grab only the relevant time steps
         err = predictY[:,-self.targetTimeSteps:,:] - self.outTarget
         
         val_abs_err = np.sum(np.abs(err)) / self.targetSize
@@ -122,20 +134,27 @@ class ValidationCb(tf.keras.callbacks.Callback):
         now = time.time()
         self.epochTimeHist.append(now)
 
+        epochsRemaining = self.maxEpochs - thisEpoch
+        timePerEpoch = np.mean(np.diff(self.epochTimeHist[-4:]))
+        timeRemaining = epochsRemaining * timePerEpoch
+
+        def PrintHeaders():
+            # Headers for the text table printed during training
+            print(f"Epoch TrainErrSq ValErrSq Fitness Penalty ProcTime Remaining")
+
         # Epoch printout
-        if bestResult or (thisEpoch%10)==0 or now - self.prevPrintTime > 60. :
-            print(f"Epoch {thisEpoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
-                 f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
+        if bestResult or (thisEpoch%10)==0 or now - self.prevPrintTime > 60. \
+            or thisEpoch < 5 or thisEpoch == self.maxEpochs:
+            if self.printCount%10 == 0:
+                PrintHeaders()
+            #print(f"Epoch {thisEpoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
+                 #f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
+            print(f"{thisEpoch:5} {logs['loss']:10.3f} {val_sq_err:8.3f} {fitness:7.3f} {penalty:7.3f} " +
+                f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
+                f"{' - New best! ' if bestResult else ''}")
+            self.printCount += 1
             self.prevPrintTime = now
-        
-        # Timing printout
-        if now - self.prevEtaPrintTime > 60.:
-            epochsRemaining = self.maxEpochs - thisEpoch
-            timePerEpoch = np.mean(np.diff(self.epochTimeHist[-4:]))
-            print(f'Time Elapsed= {(now - self.startTime)/60:.0f} min, PerEpoch= {timePerEpoch:.1f} s, \
-                Remaining= {epochsRemaining * timePerEpoch / 60.:.0f} min')
-            self.prevEtaPrintTime = now
-        
+                
         # Update trainMetrics
         self.trainMetrics.absErrVal.append(val_abs_err)
         self.trainMetrics.lossVal.append(val_sq_err)
@@ -155,10 +174,7 @@ class ValidationCb(tf.keras.callbacks.Callback):
                     print('No validation improvement in {} epochs'.format(self.patience))
                     print('STOPPING TRAINING EARLY AT EPOCH {}'.format(thisEpoch))
         
-        self.prevEpochTime = now
         self.prevFitness = fitness
-        
-        
         
     
 # To allow pickling:
@@ -485,13 +501,14 @@ def TrainNetwork(r, inData, outData, final=True):
     
     start = time.time()
 
+    validationCb.startTime = time.time()
     hist = r.model.fit(trainX, trainY, epochs=epochsLeft, 
                      batch_size=r.sampleCount, shuffle=True,
                      verbose=0, callbacks=callbacks)
     
     end = time.time()
     r.trainTime = end-start
-    print(f'Training Time (h:m:s)= {r.trainTime//3600.:.0f}:{(r.trainTime%3600)//60.:02.0f}:{r.trainTime%60.:2.0f}.  {r.trainTime:.1f}s')
+    print(f'Training Time (h:m:s)= {SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
     
     if final and r.config['revertToBest']:
         if validationCb.bestEpoch > 0:
@@ -526,9 +543,9 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
         trainMetrics[i] = r.trainMetrics
         if i == 0:
             PrintNetwork(r)
-    print('\n**********************************************************************************')
-    print('PRUNED NETWORK')
-    print(f'Training {candidates} candidate models for {trialEpochs} epochs, then selecting the best.')
+    printmd('**********************************************************************************')
+    printmd('## PRUNED NETWORK')
+    printmd(f'Training **{candidates}** candidate models for **{trialEpochs}** epochs, then selecting the best.')
 
     # Trial each model by a small amount of training
     epochBackup = r.config['epochs']
@@ -540,7 +557,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     fitness = np.zeros((candidates))
     for i in range(candidates):
         print('\n************************************')
-        print(f'Training candidate model {i} out of {candidates}')
+        printmd(f'Training candidate model **{i}** out of {candidates}')
         r.model = models[i]
         r.trainMetrics = trainMetrics[i]
         TrainNetwork(r, inData, outData, final=False)
@@ -576,7 +593,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     print('\n**********************************************************************************')
     print('**********************************************************************************')
     print('**********************************************************************************')
-    print('All candidate model scores:')
+    print('### All candidate model scores:')
     print(scores)
     
     # Weight each of the scores
@@ -591,7 +608,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
      
     print('Total:')
     print(totalScore)
-    print('Chose candidate model: {}'.format(bestI))
+    printmd('**Chose candidate model: {}**'.format(bestI))
     
     # Train on the best model
     r.config['epochs'] = epochBackup

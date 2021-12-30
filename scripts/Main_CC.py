@@ -47,7 +47,6 @@ import pandas as pd
 
 from DataTypes import FeedLoc
 
-
 from IPython.display import Markdown, display
 def printmd(string, color=None):
     if color is None:
@@ -82,6 +81,11 @@ def PrintInOutDataRanges(dfs, outData):
 
 tf.keras.backend.clear_session()
 
+# to force CPU compute:
+if 0:
+    printmd("**USING ONLY CPU**")
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 r = ModelResult()
 r.config = GetConfig() 
 
@@ -94,7 +98,7 @@ r.config = GetConfig()
 r.coinList = ['BTC', 'ETH']
 #r.coinList = ['ETH']
 
-print('DONE')
+printmd('### Imports DONE')
 
 # ******************************************************************************
 # %% 
@@ -103,7 +107,7 @@ print('DONE')
 numHours = 24*365*3
 dfs = cgd.GetHourlyDf('./indata/2021-09-30_price_data_60m.pickle', r.coinList, numHours) # a list of data frames
 
-print('Got data\nDONE')
+printmd('### Get data DONE')
 
 # ******************************************************************************
 # %% 
@@ -178,7 +182,7 @@ print(f'Input data (samples={r.sampleCount}, timeSteps={r.timesteps})')
 
 print(f'Output data shape = {outData.shape}')
 
-print('DONE')
+printmd('### Prep data DONE')
 
 # ******************************************************************************
 # %% 
@@ -202,7 +206,7 @@ if single:
     
     # !@#$
     #r.config['lstmWidth'] = [64]
-    r.config['epochs'] = 8
+    r.config['epochs'] = 16
     
     # Scale the input and output data
     thisInData = [arr * r.config['inScale'] for arr in inData]
@@ -217,7 +221,11 @@ if single:
 
     NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
     
-print('DONE')
+    printmd('### Make & train DONE')
+else:
+    print('Run next cell for batch...')
+    
+
 #%%
 if not single:
     # *****************************************************************************
@@ -251,7 +259,7 @@ if not single:
         # Change for batch2
         
         for idx1, val1 in enumerate(bat1Val):
-            tensorflow.keras.backend.clear_session() 
+            tf.keras.backend.clear_session() 
             results[idx2][idx1] = copy.deepcopy(startR)
             r = results[idx2][idx1]
             
@@ -354,7 +362,7 @@ if not single:
     #print('Going to sleep...')
     #os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
 
-print('DONE')
+printmd('## Batch run DONE')
 
 
 # %%
