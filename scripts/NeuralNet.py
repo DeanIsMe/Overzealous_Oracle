@@ -409,7 +409,7 @@ def MakeNetwork(r):
         this_layer = layers.concatenate([this_layer, feeds[FeedLoc.dense]])
 
     # Dense layer
-    main_output = layers.Dense(units=r.outFeatureCount, activation='softmax', name='final_output')(this_layer)
+    main_output = layers.Dense(units=r.outFeatureCount, activation='linear', name='final_output')(this_layer)
     
     r.model = models.Model(inputs=feeds, outputs=[main_output])
 

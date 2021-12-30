@@ -48,17 +48,17 @@ import pandas as pd
 from DataTypes import FeedLoc
 
 
-def PrintOutDataRanges(r, outData):
-    print("\r\noutData 90th Percentile:")
-    print(np.percentile(outData, 90, axis=1))
-    print("\r\noutData 10th Percentile:")
-    print(np.percentile(outData, 10, axis=1))
+from IPython.display import Markdown, display
+def printmd(string, color=None):
+    if color is None:
+        display(Markdown(string))
+    else:
+        colorstr = "<span style='color:{}'>{}</span>".format(color, string)
+        display(Markdown(colorstr))
 
-
-def PrintInDataRanges(dfs):
+def PrintInOutDataRanges(dfs, outData):
     # Print a table. Each column is a feature, each row is a sample
     quantiles = [0.90, 0.10]
-    np.zeros((len(dfs), len(dfs[0].columns)))
     values = []
 
     for i, q in enumerate(quantiles):
@@ -68,12 +68,17 @@ def PrintInDataRanges(dfs):
             ser = df.loc[:,df.dtypes != bool].quantile(q=q)
             ser.name = df.name
             series.append(ser)
+
         dfq = pd.DataFrame(series)
+
+        outNums = np.transpose(np.percentile(outData, q*100., axis=1))
+        for i in range(outData.shape[-1]):
+            dfq[f'out_{i}'] = outNums[i]
+
         dfq.name = q
         values.append(dfq)
-        print(f'Input data {q:.2f} quantile')
+        printmd(f'\nIn + Out data **{q:.2f} quantile**')
         print(dfq)
-
 
 tf.keras.backend.clear_session()
 
@@ -164,10 +169,9 @@ r.outFeatureCount = outData.shape[-1]
 for i in np.arange(r.outFeatureCount):
     outData[:,:,i] /= np.percentile(np.abs(outData[:,:,i]), 90)
     
-# Print out data
-PrintInDataRanges(dfs)
+# Print data ranges
+PrintInOutDataRanges(dfs, outData)
 
-PrintOutDataRanges(r, outData)
 FE.PlotOutData(r, prices, outData, 0)
 
 print(f'Input data (samples={r.sampleCount}, timeSteps={r.timesteps})')
@@ -220,8 +224,6 @@ if not single:
     # Batch Run
     #
     
-    
-
 #    bat1Name = 'InScale'
 #    bat1Val = [0.1, 1, 10, 100]
 #    
@@ -353,4 +355,6 @@ if not single:
     #os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
 
 print('DONE')
+
+
 # %%
