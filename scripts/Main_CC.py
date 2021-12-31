@@ -89,90 +89,103 @@ if 0:
 r = ModelResult()
 r.config = GetConfig() 
 
-#At this point, the stock data should have all gaps filled in
-#Shape should be (Stocks, Timesteps, Features
-#Columns should be ['close', 'high', 'low', 'volumeto']
 
-#r.coinList = ['ETH','BTC','BCH','XRP','LTC','XLM','NEO','EOS','XEM', 'IOT','DOGE','ADA','POT','VET','XLM','ETC']
-#r.coinList = ['ETH','BTC','BCH','XRP','LTC']
-r.coinList = ['BTC', 'ETH']
-#r.coinList = ['ETH']
+# Load the input data file
+#At this point, the stock data should have all gaps filled in
+inDataFileName = './indata/2021-09-30_price_data_60m.pickle'
+dataLoader = cgd.DataLoader(inDataFileName)
+print('Loaded input file')
+
 
 printmd('### Imports DONE')
 
 # ******************************************************************************
 # %% 
-# GET DATA
+# GET & PREP DATA
 
-numHours = 24*365*5
-dfs = cgd.GetHourlyDf('./indata/2021-09-30_price_data_60m.pickle', r.coinList, numHours) # a list of data frames
+#r.coinList = ['ETH','BTC','BCH','XRP','LTC','XLM','NEO','EOS','XEM', 'IOT','DOGE','ADA','POT','VET','XLM','ETC']
+#r.coinList = ['ETH','BTC','BCH','XRP','LTC']
+r.coinList = ['BTC', 'ETH']
+#r.coinList = ['ETH']
+r.numHours = 24*365*5
 
-printmd('### Get data DONE')
 
-# ******************************************************************************
-# %% 
-# PREP DATA
+def PrepData(r:ModelResult, dfs:list):
+    r.sampleCount = len(dfs)
+    r.timesteps = dfs[0].shape[-2]
 
-r.sampleCount = len(dfs)
-r.timesteps = dfs[0].shape[-2]
+    prices = np.zeros((r.sampleCount, r.timesteps))
+    for i in np.arange(r.sampleCount):
+        prices[i, :] =  np.array(dfs[i]['close'])
 
-prices = np.zeros((r.sampleCount, r.timesteps))
-for i in np.arange(r.sampleCount):
-    prices[i, :] =  np.array(dfs[i]['close'])
+    FE.AddLogDiff(r, dfs)
+    FE.AddVix(r, dfs, prices)
+    FE.AddRsi(r, dfs)
+    FE.AddEma(r, dfs)
+    FE.ScaleLoadedData(dfs) # High, Low, etc
 
-FE.AddLogDiff(r, dfs)
-FE.AddVix(r, dfs, prices)
-FE.AddRsi(r, dfs)
-FE.AddEma(r, dfs)
-FE.ScaleLoadedData(dfs) # High, Low, etc
+    r.inFeatureList = list(dfs[0].columns)
+    r.inFeatureCount = dfs[0].shape[-1]
 
-r.inFeatureList = list(dfs[0].columns)
-r.inFeatureCount = dfs[0].shape[-1]
+    # Plot a small sample of the input data
+    FE.PlotInData(r, dfs, 0, [0, 50])
 
-# Plot a small sample of the input data
-FE.PlotInData(r, dfs, 0, [0, 50])
+    # Based on the config and the list of features, determine the feed location for each feature
+    featureList = dfs[0].columns
 
-# Based on the config and the list of features, determine the feed location for each feature
-featureList = dfs[0].columns
+    # INPUT DATA
+    # inData has 3 separate arrays for 3 separate feed locations
+    inData = [[] for i in range(FeedLoc.LEN)]
+    feedLocFeatures = [[] for i in range(FeedLoc.LEN)]
 
-# INPUT DATA
-# inData has 3 separate arrays for 3 separate feed locations
-inData = [[] for i in range(FeedLoc.LEN)]
-feedLocFeatures = [[] for i in range(FeedLoc.LEN)]
+    # Determine which features go into which feed locations
+    for loc in range(FeedLoc.LEN):
+        # Find the features that are in this feed location
+        feedLocFeatures[loc] = np.zeros_like(featureList, dtype=bool)
+        for fidx, feature in enumerate(featureList):
+            for featureMatch in r.config['feedLoc'][loc]:
+                if featureMatch in feature:
+                    feedLocFeatures[loc][fidx] = True
+                    break
 
-# Determine which features go into which feed locations
-for loc in range(FeedLoc.LEN):
-    # Find the features that are in this feed location
-    feedLocFeatures[loc] = np.zeros_like(featureList, dtype=bool)
-    for fidx, feature in enumerate(featureList):
-        for featureMatch in r.config['feedLoc'][loc]:
-            if featureMatch in feature:
-                feedLocFeatures[loc][fidx] = True
-                break
+    # Make the input data
+    for loc in range(FeedLoc.LEN):
+        # Make the input data 3D array for this feed location
+        inData[loc] = np.zeros((r.sampleCount, r.timesteps, np.sum(feedLocFeatures[loc])))
+        for s, df in enumerate(dfs):
+            inData[loc][s] = np.array(df.iloc[:,feedLocFeatures[loc]])
 
-# Make the input data
-for loc in range(FeedLoc.LEN):
-    # Make the input data 3D array for this feed location
-    inData[loc] = np.zeros((r.sampleCount, r.timesteps, np.sum(feedLocFeatures[loc])))
-    for s, df in enumerate(dfs):
-        inData[loc][s] = np.array(df.iloc[:,feedLocFeatures[loc]])
+    r.feedLocFeatures = feedLocFeatures
 
-r.feedLocFeatures = feedLocFeatures
 
-# Print feed locations for all input data
+    # OUTPUT DATA
+    outData = FE.CalcFavScores(r.config, prices)
+    r.outFeatureCount = outData.shape[-1]
+
+    #Scale output values to a reasonable range
+    #17/12/2017: dividing by 90th percentile was found to be a good scale for SGD
+    for i in np.arange(r.outFeatureCount):
+        outData[:,:,i] /= np.percentile(np.abs(outData[:,:,i]), 90)
+
+    # Scale the input data
+    if r.config['inScale'] != 1.:
+        inData = [arr * r.config['inScale'] for arr in inData]
+
+    # Scale the output data
+    if r.config['outScale'] != 1.:
+        outData = outData * r.config['outScale']
+
+    return dfs, inData, outData, prices
+
+
+dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
+dfs, inData, outData, prices = PrepData(r, dfs)
+
+# Print info about in & out data:
 print("The input feed locations for the features are:")
 for loc in range(FeedLoc.LEN):
-    print(f"Feed location '{FeedLoc.NAMES[loc]}': {list(featureList[feedLocFeatures[loc]])}")
+    print(f"Feed location '{FeedLoc.NAMES[loc]}': {list(dfs[0].columns[r.feedLocFeatures[loc]])}")
 
-# OUTPUT DATA
-outData = FE.CalcFavScores(r.config, prices)
-r.outFeatureCount = outData.shape[-1]
-
-#Scale output values to a reasonable range
-#17/12/2017: dividing by 90th percentile was found to be a good scale for SGD
-for i in np.arange(r.outFeatureCount):
-    outData[:,:,i] /= np.percentile(np.abs(outData[:,:,i]), 90)
-    
 # Print data ranges
 PrintInOutDataRanges(dfs, outData)
 
@@ -182,6 +195,7 @@ print(f'Input data (samples={r.sampleCount}, timeSteps={r.timesteps})')
 
 print(f'Output data shape = {outData.shape}')
 
+# Data shape should be (Stocks, Timesteps, Features)
 printmd('### Prep data DONE')
 
 # ******************************************************************************
@@ -194,7 +208,6 @@ if 1:
     import importlib
     importlib.reload(NeuralNet)
 
-
 prunedNetwork = False # Pruned: generate multiple candidates and use the best
 
 single = True
@@ -206,20 +219,19 @@ if single:
     
     # !@#$
     #r.config['lstmWidth'] = [64]
-    r.config['epochs'] = 16
+    #r.config['epochs'] = 16
     
     # Scale the input and output data
-    thisInData = [arr * r.config['inScale'] for arr in inData]
     
-    thisOutData = outData * r.config['outScale']
+
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)
         NeuralNet.PrintNetwork(r)
-        NeuralNet.TrainNetwork(r, thisInData, thisOutData)
+        NeuralNet.TrainNetwork(r, inData, outData)
     else:
-        NeuralNet.MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
+        NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
 
-    NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
+    NeuralNet.TestNetwork(r, prices, inData, outData)
     
     printmd('### Make & train DONE')
 else:
@@ -272,73 +284,16 @@ if not single:
             # Change for this batch
             r.config['inScale'] = val1
             r.config['outScale'] = val2
+
+            dfs, inData, outData, prices = PrepData(r, dfsRaw)
             
-            
-#            r.config['outputRanges'] = list(np.ceil(np.array([[12,48]]) * val2).astype(int))
-#            fScale = val1 * val2
-#            r.config['vixMaxPeriodPast'] = np.ceil(40 * 5 * fScale).astype(int)
-#            r.config['rsiWindowLen'] = np.ceil(14 * 5 * fScale).astype(int) # The span of the EMA calc for RSI
-#            r.config['emaLengths'] = list(np.ceil(np.array([9, 12, 26]) * 5 * fScale).astype(int)) # The span of the EMAs
-       
-##            filehandler = open('dfs_10coins_180days_2018_04_20.pickle', 'rb')
-#            filehandler = open('dfs_5coins_40days_2018-02-17.pickle', 'rb')
-#            dfs = pickle.load(filehandler)
-#            filehandler.close()
-#            
-##            r.coinList = r.coinList[:val2]
-##            dfs = dfs[:val2]
-##            trainPoints = val1
-#            
-#            testPoints = 500
-#
-#            # Keep the same number of testing points each time
-#            tPoints = np.array([trainPoints, testPoints, 100])
-#            r.config['dataRatios'] = tPoints / tPoints.sum()
-#            # Keep the test data as the same each time
-#            for i in range(len(dfs)):
-#                dfs[i] = dfs[i][-tPoints.sum():] # cut out the start       
-#            
-#            # STANDARD PROCESSING
-#            r.sampleCount = len(dfs)
-#            r.timesteps = dfs[0].shape[-2]
-#
-#            prices = np.zeros((r.sampleCount, r.timesteps))
-#            for i in np.arange(r.sampleCount):
-#                prices[i, :] =  np.array(dfs[i]['close'])
-#            
-#            FE.AddLogDiff(r, dfs)
-#            FE.AddVix(r, dfs, prices)
-#            FE.AddRsi(r, dfs)
-#            FE.AddEma(r, dfs)
-#            FE.ScaleLoadedData(dfs) # High, Low, etc
-#            
-#            r.inFeatureList = list(dfs[0].columns)
-#            r.inFeatureCount = dfs[0].shape[-1]
-#            
-#            # Convert to a numpy array
-#            inData = np.zeros((r.sampleCount, r.timesteps, r.inFeatureCount))
-#            for i, df in enumerate(dfs):
-#                inData[i] = np.array(df)
-#            	
-#            # OUTPUT DATA
-#            outData = FE.CalcFavScores(r.config, prices)
-#            r.outFeatureCount = outData.shape[-1]
-#            
-#            #Scale output values to a reasonable range
-#            #17/12/2017: dividing by 90th percentile was found to be a good scale for SGD
-#            for i in np.arange(r.outFeatureCount):
-#                outData[:,:,i] /= np.percentile(np.abs(outData[:,:,i]), 90)
-            # *********************************************************************
-            
-            thisInData = inData * r.config['inScale']
-            thisOutData = outData * r.config['outScale']
-            NeuralNet.MakeAndTrainNetwork(r, thisInData, thisOutData)
-            NeuralNet.MakeAndTrainPrunedNetwork(r, thisInData, thisOutData)
-            NeuralNet.TestNetwork(r, prices, thisInData, thisOutData)
+            NeuralNet.MakeAndTrainNetwork(r, inData, outData)
+            NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
+            NeuralNet.TestNetwork(r, prices, inData, outData)
     
     print('\n\nBATCH RUN FINISHED!\n')
     # SAVE THE DATA
-    # Clear the model so it can pickle
+    # Clear the model so that 'r' can pickle
     models = [0] * bat2Len
     for idx2, rList in enumerate(results):
         models[idx2] = [0]*bat1Len
@@ -346,7 +301,6 @@ if not single:
             r = results[idx2][idx1]
             models[idx2][idx1] = r.model
             r.model = 0
-            r.kerasOpt = 0
     
     filename = r.batchName + '.pickle'
     filehandler = open(filename, 'wb') 

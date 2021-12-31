@@ -7,7 +7,8 @@ Created on Sun Aug 20 22:19:35 2017
 
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas
+import pandas as pd
+from pandas.core.frame import DataFrame
 
 # df: dataframe
 # dfs: dataframes
@@ -213,7 +214,7 @@ def Normalise(dfs, cols):
     # Apply the scaler
     for df in dfs:
         for col in cols:
-            df[col] *= scaler
+            df.loc[:, col] *= scaler
     
 
 #==========================================================================
@@ -225,8 +226,8 @@ def AddVix(r, dfs, prices):
     volatility = CalcVolatility(r.config, prices)
     for i in np.arange(r.sampleCount):
         for j in np.arange(volatility.shape[-1]):
-            cName = 'vix{}'.format(j+1) # Column name
-            dfs[i][cName] = volatility[i,:,j]
+            col = 'vix{}'.format(j+1) # Column name
+            dfs[i].loc[:, col] = volatility[i,:,j]
     
     # Volatility Normaliser
     # Normalise all by the same amount
@@ -312,8 +313,8 @@ def AddRsi(r, dfs):
         return np.log(RSI)
     
     for df in dfs:
-        df['RSI'] = CalcRSI(df['close'])
-        df['RSI'] = df['RSI'].replace([np.inf, -np.inf, np.nan], [2, -2, 0])
+        df.loc[:, 'RSI'] = CalcRSI(df['close'])
+        df.loc[:, 'RSI'] = df['RSI'].replace([np.inf, -np.inf, np.nan], [2, -2, 0])
     
     Normalise(dfs, ['RSI'])
     
@@ -328,7 +329,7 @@ def AddEma(r, dfs):
     for df in dfs:
         for i, span in enumerate(r.config['emaLengths']):
             col = 'ema{}'.format(i+1)
-            df[col] = df['close'].ewm(span=span,min_periods=0,adjust=True,ignore_na=False).mean() / df['close'] - 1
+            df.loc[:,col] = df['close'].ewm(span=span,min_periods=0,adjust=True,ignore_na=False).mean() / df['close'] - 1
 
     emaCols = [col for col in dfs[0].columns if 'ema' in col]
     Normalise(dfs, emaCols)
@@ -340,9 +341,10 @@ def AddLogDiff(r, dfs):
     ## Diff Log Series
     Add a logarithmic differential series to the data frames
     """
+
     for df in dfs:
-        df['logDiff'] = df.close.apply(np.log2).diff()
-        df['logDiff'] = df['logDiff'].replace([np.inf, -np.inf, np.nan], [2, -2, 0])
+        col2 = np.log2(np.array(df['close']))
+        df.loc[:,'logDiff'] = np.diff(col2, prepend=col2[0])
 
     Normalise(dfs, ['logDiff'])
     

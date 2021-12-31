@@ -12,7 +12,7 @@ import tensorflow as tf
 from tensorflow import keras
 import tensorflow.keras.layers as layers
 import tensorflow.keras.models as models
-from tensorflow.python.keras.backend import dropout # allow completion to work
+import tensorflow.keras.optimizers as optimizers
 
 from DataTypes import TrainMetrics
 import pandas as pd
@@ -283,7 +283,7 @@ def PlotTrainMetrics(r, subplot=False):
     return (maxY, minY)
 
 #==========================================================================
-def PrepConvConfig(r):
+def PrepConvConfig(cfg):
     """I made fairly flexible system for specifying the convolutional layer
     config. This function interprets the config and outputs explicit numbers for each layer.
 
@@ -291,34 +291,33 @@ def PrepConvConfig(r):
         r ([type]): [description]
 
     Returns:
-        [dict]: convConf indicates the dilation, filter count and kernel size for each convolutional layer
+        [dict]: convCfg indicates the dilation, filter count and kernel size for each convolutional layer
     """
-    convConf = dict()
-    convConf['convDilation'] = r.config['convDilation']
-    convConf['convFilters']  = r.config['convFilters']  
-    convConf['convKernelSz'] = r.config['convKernelSz']
+    convCfg = dict()
+    convCfg['dilation'] = cfg['convDilation']
+    convCfg['filters']  = cfg['convFilters']  
+    convCfg['kernelSz'] = cfg['convKernelSz']
 
-    # Check for zero layers
-    if not (convConf['convDilation'] and convConf['convFilters'] and convConf['convKernelSz']):
+    # Determine the number of convolutional layers
+    if not (convCfg['dilation'] and convCfg['filters'] and convCfg['kernelSz']):
+        # Check for zero layers
         # at least 1 of these parameters are empty
         # there are no convolutional layers
         convLayerCount = 0
     else:
         convLayerCount = max(
-            1 if isinstance(convConf['convDilation'], int) else len(convConf['convDilation']),
-            1 if isinstance(convConf['convFilters'], int)  else len(convConf['convFilters']),
-            1 if isinstance(convConf['convKernelSz'], int) else len(convConf['convKernelSz']),
+            1 if isinstance(convCfg['dilation'], int) else len(convCfg['dilation']),
+            1 if isinstance(convCfg['filters'], int)  else len(convCfg['filters']),
+            1 if isinstance(convCfg['kernelSz'], int) else len(convCfg['kernelSz']),
         )
     
-    convConf['layerCount'] = convLayerCount
-    if isinstance(r.config['convDilation'], int):
-        convConf['convDilation'] = [r.config['convDilation']] * convLayerCount
-    if isinstance(r.config['convFilters'], int):
-        convConf['convFilters'] = [r.config['convFilters']] * convLayerCount
-    if isinstance(r.config['convKernelSz'], int):
-        convConf['convKernelSz'] = [r.config['convKernelSz']] * convLayerCount
+    for key in convCfg.keys():
+        if isinstance(cfg[key], int) or convLayerCount==0:
+            convCfg[cfg[key]] = [convCfg[cfg[key]]] * convLayerCount
+
+    convCfg['layerCount'] = convLayerCount
     
-    return convConf
+    return convCfg
 
 
 #==========================================================================
@@ -376,18 +375,15 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
 #==========================================================================
 def MakeNetwork(r):
     # Prep convolution config
-    convConf = PrepConvConfig(r)
+    convCfg = PrepConvConfig(r)
 
     #Make a Neural Network
-    if type(r.kerasOpt) == int:
+    if r.config['optimiser'].lower() == 'adam':
         # beta_1 = exponential decay rate for 1st moment estimates. Default=0.9
         # beta_2 = exponential decay rate for 2nd moment estimates. Default=0.999
-        opt = keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9)
-        
-        r.optimiser = 'Adam'
+        opt = optimizers.Adam(learning_rate=0.001, beta_1=0.9)
     else:
-        opt = r.kerasOpt
-        r.optimiser = r.kerasOptStr
+        opt = r.config['optimiser']
 
     feeds = [[] for i in range(FeedLoc.LEN)]
     
@@ -401,17 +397,17 @@ def MakeNetwork(r):
     # Make conv layers
     if feed_lens[FeedLoc.conv] > 0:
         convLayers = []
-        for i in range(convConf['layerCount']):
-            convLayers.append(MakeLayerModule('conv', feeds[FeedLoc.conv], out_width=convConf['convFilters'][i],
-                kernel_size=convConf['convKernelSz'][i], dilation=convConf['convDilation'][i],
+        for i in range(convCfg['layerCount']):
+            convLayers.append(MakeLayerModule('conv', feeds[FeedLoc.conv], out_width=convCfg['filters'][i],
+                kernel_size=convCfg['kernelSz'][i], dilation=convCfg['dilation'][i],
                 dropout_rate=r.config['dropout'],
-                name= f"conv1d_{i}_{convConf['convDilation'][i]}x"))
+                name= f"conv1d_{i}_{convCfg['dilation'][i]}x"))
 
-        if convConf['layerCount'] == 0:
+        if convCfg['layerCount'] == 0:
             this_layer = feeds[FeedLoc.conv]
-        elif convConf['layerCount'] == 1:
+        elif convCfg['layerCount'] == 1:
             this_layer = convLayers[0]
-        elif convConf['layerCount'] > 1:
+        elif convCfg['layerCount'] > 1:
             this_layer = layers.concatenate(convLayers)
 
         # Add LSTM feed
@@ -427,7 +423,7 @@ def MakeNetwork(r):
         this_layer = MakeLayerModule('dense', this_layer, out_width=bnw, dropout_rate=r.config['dropout'],
             name= f"bottleneck_{bnw}")
 
-    # Make the LSTM layers
+    # LSTM layers
     for i, neurons in enumerate(r.config['lstmWidth']):
         if neurons > 0:
             this_layer = MakeLayerModule('lstm', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],

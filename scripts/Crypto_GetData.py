@@ -9,10 +9,7 @@ import numpy as np
 
 import pandas as pd
 import time
-from pandas.core.construction import is_empty_data
-
-from pandas.core.frame import DataFrame
-
+import pickle
 
 from private_keys import cryptowatch_public
 
@@ -25,48 +22,54 @@ def printmd(string, color=None):
         display(Markdown(colorstr))
 
 #*******************************************************************************
-import pickle
-def GetHourlyDf(filename, coins, num_hours):
-    """Grab the hourly data from file, as a list of DataFrames
+class DataLoader:
+    def __init__(self, filename):
+        self.filename = filename
+        filehandler = open(filename, 'rb')
+        self.package = pickle.load(filehandler)
+        filehandler.close()
+    
+    #*******************************************************************************
+    def GetHourlyDf(self, coins, num_hours):
+        """Grab the hourly data from file, as a list of DataFrames
 
-    Args:
-        filename (str): the file to load from
-        coins (list): a list of coins of interest
-        num_hours (int): the number of hours (data points) for each coin
+        Args:
+            filename (str): the file to load from
+            coins (list): a list of coins of interest
+            num_hours (int): the number of hours (data points) for each coin
 
-    Returns:
-        list: A list of DataFrames. 1 per coin
-    """
-    filehandler = open(filename, 'rb')
-    package = pickle.load(filehandler)
-    data = package['data']
-    filehandler.close()
-    # 'data' is a dictionary where the key indicates the trading pair
-    dfs = [] # Output is a list of dataframes
+        Returns:
+            list: A list of DataFrames. 1 per coin
+        """
+        data = self.package['data']
+        # 'data' is a dictionary where the key indicates the trading pair
+        dfs = [] # Output is a list of dataframes
 
-    base_options = ['usd', 'usdt']
-    for coin in coins:
-        coin_found = False
-        for base in base_options:
-            pair_check = coin.lower() + base
-            if pair_check in data:
-                # This trading pair exists. Check the duration
-                dur_avail = data[pair_check]['time'].iloc[-1] - data[pair_check]['time'].iloc[0]
-                rows_avail = len(data[pair_check])
-                if rows_avail > num_hours:
-                    # Sufficient duration. Go with it!
-                    print(f'[{coin}] Using trading pair {pair_check}')
-                    # Extract the relevant rows and save
-                    this_df = data[pair_check].iloc[-num_hours:]
-                    this_df.name = coin
-                    dfs.append(this_df)
-                    coin_found = True
-                    break
-        if not coin_found:
-            printmd(f'\n**ERROR!**', color="0xFF8888")
-            print(f'GetHourlyDf: No valid pair found for {coin} in file {filename}')
-            raise
-    return dfs
+        # For each coin, pick a pair and extract the desired time
+        base_options = ['usd', 'usdt']
+        for coin in coins:
+            coin_found = False
+            for base in base_options:
+                pair_check = coin.lower() + base
+                if pair_check in data:
+                    # This trading pair exists. Check the duration
+                    dur_avail = data[pair_check]['time'].iloc[-1] - data[pair_check]['time'].iloc[0]
+                    rows_avail = len(data[pair_check])
+                    if rows_avail > num_hours:
+                        # Sufficient duration. Go with it!
+                        print(f'[{coin}] Using trading pair {pair_check}')
+                        # Extract the relevant rows and save
+                        # copy() to avoid SettingWithCopyWarning error
+                        this_df = data[pair_check].iloc[-num_hours:].copy()
+                        this_df.name = coin
+                        dfs.append(this_df)
+                        coin_found = True
+                        break
+            if not coin_found:
+                printmd(f'\n**ERROR!**', color="0xFF8888")
+                print(f'GetHourlyDf: No valid pair found for {coin} in file {filename}')
+                raise
+        return dfs
 
 # %%
 #*******************************************************************************
@@ -316,7 +319,7 @@ def ReadKrakenCsv(csv_dir):
     Then, call this function to read the hourly CSVs into a dataframe, & pickle it.
     All non-hourly files are currently ignored.
     The intention is that the data file could then be updated as needed from cryptowatch.
-    This function also scrubs teh data
+    This function also scrubs the data
     """
     printmd('## Read Kraken CSV')
 

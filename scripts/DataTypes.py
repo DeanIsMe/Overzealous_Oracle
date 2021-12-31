@@ -52,14 +52,13 @@ class ModelResult():
                
         self.trainMetrics = 0 # See class above
         self.coinList = []
+        self.numHours = 0
 
         self.inFeatureList = None
         self.feedLocFeatures = None
         self.tInd = None # Dictionary with keys: 'train', 'val', 'test'. Values are the time indices in each set
         
         self.model = None
-        self.kerasOpt = 0 # 0 = Adam. Otherwise, set to an Optimizer
-        self.kerasOptStr = None
         self.config = None
         
         self.date = datetime.date.today()

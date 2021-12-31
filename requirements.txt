@@ -3,6 +3,7 @@ numpy
 pandas
 tensorflow
 keras
+keras-tuner
 matplotlib
 pycwatch
 pydot

@@ -31,6 +31,8 @@ def GetConfig():
     
 #    # Volume Analysis
 #    config['volMaxDaysPast'] = 246
+
+    config['epochs'] = 8 # Number of complete passes of the data (subject to early stopping)
     
     # After training, change the weights to the model that had the best 
     # validation score
@@ -51,8 +53,6 @@ def GetConfig():
     config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
     config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
     config['convKernelSz'] = 10 # Kernel size per filter
-
-    config['epochs'] = 64 # Number of complete passes of the data (subject to early stopping)
 
     config['dataRatios'] = [0.75, 0.2 ,0.05] # Training, Validation, Testing
     #note: 03/02/2018 I am using the same set for validation and testing
@@ -88,6 +88,9 @@ def GetConfig():
     
     # Exponential Moving Average
     config['emaLengths'] = [24, 168, 400] # The span of the EMAs
+
+    # Optimizer
+    config['optimiser'] = 'adam'
     
     # Input data and output data are divided by 90th percentile. Then, they
     # are multiplied by the 'scale'. This has a massive impact on the training
