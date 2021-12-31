@@ -312,8 +312,8 @@ def PrepConvConfig(cfg):
         )
     
     for key in convCfg.keys():
-        if isinstance(cfg[key], int) or convLayerCount==0:
-            convCfg[cfg[key]] = [convCfg[cfg[key]]] * convLayerCount
+        if isinstance(convCfg[key], int) or convLayerCount==0:
+            convCfg[key] = [convCfg[key]] * convLayerCount
 
     convCfg['layerCount'] = convLayerCount
     
@@ -375,7 +375,7 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
 #==========================================================================
 def MakeNetwork(r):
     # Prep convolution config
-    convCfg = PrepConvConfig(r)
+    convCfg = PrepConvConfig(r.config)
 
     #Make a Neural Network
     if r.config['optimiser'].lower() == 'adam':

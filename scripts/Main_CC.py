@@ -284,8 +284,9 @@ if not single:
             # Change for this batch
             r.config['inScale'] = val1
             r.config['outScale'] = val2
-
-            dfs, inData, outData, prices = PrepData(r, dfsRaw)
+            
+            dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
+            dfs, inData, outData, prices = PrepData(r, dfs)
             
             NeuralNet.MakeAndTrainNetwork(r, inData, outData)
             NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
