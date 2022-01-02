@@ -56,6 +56,7 @@ class ValidationCb(tf.keras.callbacks.Callback):
         self.targetSize = outTarget.size # Number of points
         self.targetTimeSteps = outTarget.shape[-2]
         self.maxEpochs = maxEpochs
+        self.curEpoch = modelEpoch
         
         # Determine the thresholds for penalising lack of movement
         # This is to avoid uneventful results that don't do anything
@@ -104,20 +105,20 @@ class ValidationCb(tf.keras.callbacks.Callback):
     #==========================================================================
     def on_epoch_end(self, epoch, logs={}):
         self.trainMetrics.curEpoch += 1
-        thisEpoch = self.trainMetrics.curEpoch
+        self.curEpoch += 1
         if not self.epochTimeHist:
             self.epochTimeHist.append(self.startTime)
+
+
+        val_abs_err = logs['val_mean_absolute_error']
+        val_sq_err = logs['val_mean_squared_error']
+        fitness = 1/val_sq_err
 
         predictY = self.model.predict(self.inData, batch_size=100)
         # Note that the prediction has some initial period to build up state,
         # then the actual prediction (len=targetTimeSteps)
         err = predictY[:,-self.targetTimeSteps:,:] - self.outTarget
         
-        val_abs_err = np.sum(np.abs(err)) / self.targetSize
-        val_sq_err = np.sum(err**2) / self.targetSize
-        
-        
-        fitness = 1/val_sq_err
         # Penalise predictions that don't vary across the time series
         thisDiff = np.mean(np.abs(np.diff(predictY, axis=1)))
         debug = 0
@@ -140,14 +141,14 @@ class ValidationCb(tf.keras.callbacks.Callback):
         if fitness > self.bestFitness:
             self.bestFitness = fitness
             self.bestWeights = self.model.get_weights()
-            self.bestEpoch = thisEpoch
+            self.bestEpoch = self.curEpoch
             bestResult = True
         
         # add the epoch duration to the list
         now = time.time()
         self.epochTimeHist.append(now)
 
-        epochsRemaining = self.maxEpochs - thisEpoch
+        epochsRemaining = self.maxEpochs - self.curEpoch
         timePerEpoch = np.mean(np.diff(self.epochTimeHist[-4:]))
         timeRemaining = epochsRemaining * timePerEpoch
 
@@ -156,13 +157,13 @@ class ValidationCb(tf.keras.callbacks.Callback):
             print(f"Epoch TrainErrSq ValErrSq Fitness Penalty ProcTime Remaining")
 
         # Epoch printout
-        if bestResult or (thisEpoch%10)==0 or now - self.prevPrintTime > 60. \
-            or thisEpoch < 5 or thisEpoch == self.maxEpochs:
+        if bestResult or (self.curEpoch%10)==0 or now - self.prevPrintTime > 60. \
+            or self.curEpoch < 5 or self.curEpoch == self.maxEpochs:
             if self.printCount%10 == 0:
                 PrintHeaders()
-            #print(f"Epoch {thisEpoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
+            #print(f"Epoch {self.curEpoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
                  #f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
-            print(f"{thisEpoch:5} {logs['loss']:10.3f} {val_sq_err:8.3f} {fitness:7.3f} {penalty:7.3f} " +
+            print(f"{self.curEpoch:5} {logs['loss']:10.3f} {val_sq_err:8.3f} {fitness:7.3f} {penalty:7.3f} " +
                 f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
                 f"{' - New best! ' if bestResult else ''}")
             self.printCount += 1
@@ -185,7 +186,7 @@ class ValidationCb(tf.keras.callbacks.Callback):
                     self.stopped_epoch = epoch
                     self.model.stop_training = True
                     print('No validation improvement in {} epochs'.format(self.patience))
-                    print('STOPPING TRAINING EARLY AT EPOCH {}'.format(thisEpoch))
+                    print('STOPPING TRAINING EARLY AT EPOCH {}'.format(self.curEpoch))
         
         self.prevFitness = fitness
         
@@ -244,6 +245,7 @@ def _CalcIndices(tMax, dataRatios, exclude):
     tOut = {'train':tInd[0], 'val':tInd[1], 'test':tInd[2]}
     return tOut
 
+
 #==========================================================================
 def PlotTrainMetrics(r, subplot=False):
     #Plot Training
@@ -256,16 +258,16 @@ def PlotTrainMetrics(r, subplot=False):
     
     lines = []
     lines.append({'label':'TrainSq',
-                  'data':r.neutralTrainSqErr / r.trainMetrics.lossTrain,
+                  'data':r.neutralTrainSqErr / r.trainHistory['mean_squared_error'],
                   'ls':'-', 'color':'C0'})
     lines.append({'label':'ValSq',
-                  'data':r.neutralValSqErr / r.trainMetrics.lossVal,
+                  'data':r.neutralValSqErr / r.trainHistory['val_mean_squared_error'],
                   'ls':'-', 'color':'C1'})
     lines.append({'label':'TrainAbs',
-                  'data':r.neutralTrainAbsErr / r.trainMetrics.absErrTrain,
+                  'data':r.neutralTrainAbsErr / r.trainHistory['mean_absolute_error'],
                   'ls':':', 'color':'C0'})
     lines.append({'label':'ValAbs',
-                  'data':r.neutralValAbsErr / r.trainMetrics.absErrVal,
+                  'data':r.neutralValAbsErr / r.trainHistory['val_mean_absolute_error'],
                   'ls':':', 'color':'C1'})
     handles = []
     for line in lines:
@@ -472,11 +474,14 @@ def TrainNetwork(r, inData, outData, final=True):
     
     # Callback to validate data
     validationCb = ValidationCb()
-    valI = r.tInd['val'] # Validation indices
-    startPredict = max(0, valI.min()-500) # This number of time steps are used to build state before starting predictions
 
-    valInData = [arr[:,startPredict:valI.max()+1,:] for arr in inData]
-    validationCb.setup(valInData, outData[:,valI,:], r.trainMetrics, r.config['earlyStopping'], r.config['epochs'], r.modelEpoch)
+    
+    valI = r.tInd['val'] # Validation indices
+    startPredict = max(0, valI[0]-r.config['evaluateBuildStatePoints']) # This number of time steps are used to build state before starting predictions
+    valX = [arr[:, startPredict:valI[-1]+1, :] for arr in inData]
+    valY = outData[:,valI,:]
+
+    validationCb.setup(valX, valY, r.trainMetrics, r.config['earlyStopping'], r.config['epochs'], r.modelEpoch)
     
     # The model could be partially trained
     epochsLeft = r.config['epochs'] - r.modelEpoch
@@ -486,7 +491,8 @@ def TrainNetwork(r, inData, outData, final=True):
     
     
     callbacks.append(validationCb)
-    
+
+
     # Save best model
 #    fileBestWeights = "bestModel.h5"
 #    checkpoint = keras.callbacks.ModelCheckpoint(fileBestWeights,
@@ -498,6 +504,7 @@ def TrainNetwork(r, inData, outData, final=True):
         print(f"\nStarting training. Max {r.config['epochs']} epochs")
     else:
         print(f"\nStarting training. At epoch {r.modelEpoch}. Max {r.config['epochs']} epochs. {epochsLeft} remaining.")
+
         
     
     trainX = [arr[:,r.tInd['train'],:] for arr in inData]
@@ -512,15 +519,27 @@ def TrainNetwork(r, inData, outData, final=True):
     start = time.time()
 
     validationCb.startTime = time.time()
-    hist = r.model.fit(trainX, trainY, epochs=epochsLeft, 
+    hist = r.model.fit(trainX, trainY, epochs=epochsLeft, validation_data=(valX, valY),
                      batch_size=r.sampleCount, shuffle=True,
                      verbose=0, callbacks=callbacks)
+    if r.modelEpoch == 0:
+        r.trainHistory = hist.history
+    else:
+        # When 'reverting', the model epoch jumps backwards
+        # Remove the 'reverted' section of train metrics, and append the new
+        for key in r.trainHistory:
+            r.trainHistory[key] = r.trainHistory[key][:r.modelEpoch]
+            r.trainHistory[key] = r.trainHistory[key] + hist.history[key]
+
+    if validationCb.curEpoch != len(list(r.trainHistory.values())[0]):
+        raise Exception("Cur epoch doesn't match training hist. Program error")
     
     end = time.time()
     r.trainTime = end-start
     print(f'Training Time (h:m:s)= {SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
     
-    r.modelEpoch = r.trainMetrics.curEpoch
+    r.modelEpoch = validationCb.curEpoch
+
     if final and r.config['revertToBest']:
         if validationCb.bestEpoch > 0:
             print(f'Reverting to the model with best validation (epoch {validationCb.bestEpoch})')
@@ -549,10 +568,10 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     # Create all models
     models = [0] * candidates
     trainMetrics = [0] * candidates
+    trainHist = [0] * candidates
     for i in range(candidates):
         MakeNetwork(r)
         models[i] = r.model
-        trainMetrics[i] = r.trainMetrics
         if i == 0:
             PrintNetwork(r)
     printmd('**********************************************************************************')
@@ -573,24 +592,24 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
         r.model = models[i]
         r.trainMetrics = trainMetrics[i]
         TrainNetwork(r, inData, outData, final=False)
-        
-        lossTrain[i] = r.trainMetrics.lossTrain[-1]
-        lossVal[i] = r.trainMetrics.lossVal[-1]
-        fitness[i] = np.max(r.trainMetrics.fitness)
+        trainHist[i] = r.trainHistory
+
+        lossTrain[i] = r.trainHistory['mean_squared_error'][-1]
+        lossVal[i] = r.trainHistory['val_mean_squared_error'][-1]
         # gradSum is a sum of the last 5 gradients (from the last 6 values)
         # of the log of the loss.
         # Should be negative. More negative = better
         # The most recent is weighted more than the first
         pastVal = min(6,trialEpochs)
-        trainGradSum[i] = np.sum(np.diff(np.log(r.trainMetrics.lossTrain[-pastVal:])) * np.linspace(1,2,num=pastVal-1))
-        valGradSum[i] = np.sum(np.diff(np.log(r.trainMetrics.lossVal[-pastVal:])) * np.linspace(1,2,num=pastVal-1))
+        trainGradSum[i] = np.sum(np.diff(np.log(r.trainHistory['mean_squared_error'][-pastVal:])) * np.linspace(1,2,num=pastVal-1))
+        valGradSum[i] = np.sum(np.diff(np.log(r.trainHistory['val_mean_squared_error'][-pastVal:])) * np.linspace(1,2,num=pastVal-1))
        
   
     # PICK THE BEST MODEL
     # Higher score = better
     scores = pd.DataFrame()
     scores['train'] = lossTrain.min()/lossTrain # 0 to 1 (1 being the best candidate)
-    scores['val'] = fitness/fitness.max() # 0 to 1 (1 being the best candidate)
+    scores['val'] = lossVal/lossVal.max() # 0 to 1 (1 being the best candidate)
     # For gradient scores, 1 is the top score, and it scales down from there
     # The amount that it drops is determined by 
 
@@ -626,6 +645,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     r.config['epochs'] = epochBackup
     r.model = models[bestI]
     r.trainMetrics = trainMetrics[bestI]
+    r.trainHistory = trainHist[bestI]
     TrainNetwork(r, inData, outData)
     return
     

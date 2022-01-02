@@ -40,6 +40,7 @@ def GetConfig():
     
     config['earlyStopping'] = 0 # 0 = no early stopping. Otherwise, the number
 #     of epochs of no improvements before training is stopped (patience)
+    config['evaluateBuildStatePoints'] = 500 # The number of timesteps used to build state when predicting values for model validation during training
     
     config['dropout'] = 0.1 # Dropout_rate of layer applied before each LSTM or Conv1D. Set to 0 to disable
    
