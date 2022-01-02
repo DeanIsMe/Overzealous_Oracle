@@ -11,20 +11,7 @@ different)
 """
 
 import datetime
-
-class TrainMetrics():
-    # !@# DEPRECATED! TO BE REMOVED
-    # Saves metrics each epoch as the model trains
-    def __init__(self):
-        # Capturing Training
-        self.lossTrain = []
-        self.absErrTrain = []
-        self.lossVal = []
-        self.absErrVal = []
-        self.fitness = []
-        self.curEpoch = 0 # Counted from the start of this model creation,
-        
-        
+       
 class FeedLoc():
     """
     ## FeedLoc is an enum
@@ -51,7 +38,6 @@ class ModelResult():
         self.inFeatureCount = 0
         self.outFeatureCount = 0
                
-        self.trainMetrics = 0 # See class above
         self.trainHistory = {} # hist.history, as returned by model.fit()
         self.coinList = []
         self.numHours = 0

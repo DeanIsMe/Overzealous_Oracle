@@ -14,7 +14,6 @@ import tensorflow.keras.layers as layers
 import tensorflow.keras.models as models
 import tensorflow.keras.optimizers as optimizers
 
-from DataTypes import TrainMetrics
 import pandas as pd
 import time
 import os
@@ -48,7 +47,7 @@ class ValidationCb(tf.keras.callbacks.Callback):
         pass
     
     
-    def setup(self, inData, outTarget, trainMetrics, patience, maxEpochs, modelEpoch):
+    def setup(self, inData, outTarget, patience, maxEpochs, modelEpoch):
         # inData covers all of the time steps of outData, PLUS some earlier time steps
         # these earlier timesteps are used for building state
         self.inData = inData # The input data that will be used for validation
@@ -74,18 +73,6 @@ class ValidationCb(tf.keras.callbacks.Callback):
         self.avgDiffUpper = avgDiffTarget * 0.25 # above this, there's no penalisation
         self.avgDiffLower = avgDiffTarget * 0.1 # Below this, the penalty is a maximum
         
-        # Adjust the trainMetrics according to the actual epoch of the model
-        # This is required because 'reverting' can cause the model epoch to jump backwards
-        if modelEpoch > 0:
-            trainMetrics.curEpoch = modelEpoch
-            trainMetrics.absErrVal = trainMetrics.absErrVal[:modelEpoch]
-            trainMetrics.lossVal = trainMetrics.lossVal[:modelEpoch]
-            trainMetrics.lossTrain = trainMetrics.lossTrain[:modelEpoch]
-            trainMetrics.absErrTrain = trainMetrics.absErrTrain[:modelEpoch]
-            trainMetrics.fitness = trainMetrics.fitness[:modelEpoch]
-
-        self.trainMetrics = trainMetrics # Links to the r.trainMetrics
-
         # Tracking the best result:
         self.bestFitness = 0
         self.bestWeights = []
@@ -104,7 +91,6 @@ class ValidationCb(tf.keras.callbacks.Callback):
            
     #==========================================================================
     def on_epoch_end(self, epoch, logs={}):
-        self.trainMetrics.curEpoch += 1
         self.curEpoch += 1
         if not self.epochTimeHist:
             self.epochTimeHist.append(self.startTime)
@@ -135,6 +121,7 @@ class ValidationCb(tf.keras.callbacks.Callback):
         if debug: print('') # new line
         
         logs['fitness'] = fitness # for choosing the best model
+        logs['penalty'] = penalty
         
         # Check if this is the best result
         bestResult = False
@@ -169,13 +156,6 @@ class ValidationCb(tf.keras.callbacks.Callback):
             self.printCount += 1
             self.prevPrintTime = now
                 
-        # Update trainMetrics
-        self.trainMetrics.absErrVal.append(val_abs_err)
-        self.trainMetrics.lossVal.append(val_sq_err)
-        self.trainMetrics.lossTrain.append(logs['loss'])
-        self.trainMetrics.absErrTrain.append(logs['mean_absolute_error'])
-        self.trainMetrics.fitness.append(fitness)
-        
         # Early stopping
         if self.patience != 0:
             if fitness == self.bestFitness:
@@ -440,13 +420,13 @@ def MakeNetwork(r):
     
     r.model = CustomModel(inputs=feeds, outputs=[main_output])
     r.modelEpoch = 0
+    r.trainHistory = {}
 
     # mape = mean absolute percentage error
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error', 'mean_squared_error'])
     #r.model.build(input_shape=(None, r.inFeatureCount))
-    
-    r.trainMetrics = TrainMetrics()
 
+    
     return
 
 #==========================================================================
@@ -481,7 +461,7 @@ def TrainNetwork(r, inData, outData, final=True):
     valX = [arr[:, startPredict:valI[-1]+1, :] for arr in inData]
     valY = outData[:,valI,:]
 
-    validationCb.setup(valX, valY, r.trainMetrics, r.config['earlyStopping'], r.config['epochs'], r.modelEpoch)
+    validationCb.setup(valX, valY, r.config['earlyStopping'], r.config['epochs'], r.modelEpoch)
     
     # The model could be partially trained
     epochsLeft = r.config['epochs'] - r.modelEpoch
@@ -544,7 +524,7 @@ def TrainNetwork(r, inData, outData, final=True):
         if validationCb.bestEpoch > 0:
             print(f'Reverting to the model with best validation (epoch {validationCb.bestEpoch})')
             r.model.set_weights(validationCb.bestWeights)
-            # Note that r.trainMetrics will still have curEpoch and other history for the full training
+            # Note that r.trainHistory history for the full training
             r.modelEpoch = validationCb.bestEpoch
     
     PlotTrainMetrics(r)
@@ -567,7 +547,6 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
 
     # Create all models
     models = [0] * candidates
-    trainMetrics = [0] * candidates
     trainHist = [0] * candidates
     for i in range(candidates):
         MakeNetwork(r)
@@ -590,7 +569,6 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
         print('\n************************************')
         printmd(f'Training candidate model **{i}** out of {candidates}')
         r.model = models[i]
-        r.trainMetrics = trainMetrics[i]
         TrainNetwork(r, inData, outData, final=False)
         trainHist[i] = r.trainHistory
 
@@ -644,7 +622,6 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     # Train on the best model
     r.config['epochs'] = epochBackup
     r.model = models[bestI]
-    r.trainMetrics = trainMetrics[bestI]
     r.trainHistory = trainHist[bestI]
     TrainNetwork(r, inData, outData)
     return
