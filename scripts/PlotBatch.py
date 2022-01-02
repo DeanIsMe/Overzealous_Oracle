@@ -16,13 +16,13 @@ from NeuralNet import PlotTrainMetrics
 
 # Uncomment either option A or B
 # OPTION A: batVal1 along x (columns), batVal2 along y (rows)
-#plt.figure(1, figsize=(bat1Len*5,bat2Len*3)); p = 1
+#plt.figure(figsize=(bat1Len*5,bat2Len*3)); p = 1
 #for idx2 in range(bat2Len):
 #    for idx1 in range(bat1Len):
 #        plt.subplot(bat2Len, bat1Len, p)
         
 # OPTION B: batVal2 along x (columns), batVal1 along y (rows)
-plt.figure(1, figsize=(bat2Len*5,bat1Len*3)); p = 1
+plt.figure(figsize=(bat2Len*5,bat1Len*3)); p = 1
 minY = 9e9
 maxY = -9e9
 allAx = []
@@ -59,7 +59,7 @@ def DrawPlot(valA, valB, nameA, nameB, data, nameY):
     # valA is the x axis
     if (not isinstance(valA[0], numbers.Number) or len(valA) < 3):
         return
-    plt.figure(2, figsize=(12,6))
+    plt.figure(figsize=(12,6))
     ax = plt.gca()
     ax.plot(valA, data)
     diffA = np.diff(valA)

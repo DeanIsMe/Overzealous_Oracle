@@ -23,7 +23,7 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
         tInd = range(tRange[0], tRange[1])
     outDim = output.shape[-1]            
     x = tInd
-    fig = plt.figure(1, figsize=(12,10))
+    fig = plt.figure(figsize=(12,10))
     fig.tight_layout()
     ax1 = plt.subplot(2,1,1)
     plt.plot(x,prices[sample, tInd])
@@ -45,13 +45,15 @@ def PlotInData(r, dfs, sample=0, tRange=0):
     else:
         tInd = np.array(range(tRange[0], tRange[1]))   
     x = tInd    
-    fig = plt.figure(1, figsize=(12,6))
+    fig = plt.figure(figsize=(12,6))
     fig.tight_layout()
     plt.title('Inputs Data for {}'.format(r.coinList[sample]))
     df = dfs[sample]
-    lines = list(range(len(df.columns)))
+    lines = []
     for i, col in enumerate(df.columns):
-        lines[i], = plt.plot(x, df[col][tInd], label=col)
+        if col == 'filler' or col == 'time':
+            continue
+        lines += plt.plot(x, df[col][tInd], label=col)
     l0, = plt.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
     plt.legend(handles = lines)
     plt.title('Input Data for: {}'.format(r.coinList[sample]))

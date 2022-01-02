@@ -116,7 +116,7 @@ class ValidationCb(tf.keras.callbacks.Callback):
         val_abs_err = np.sum(np.abs(err)) / self.targetSize
         val_sq_err = np.sum(err**2) / self.targetSize
         
-               
+        
         fitness = 1/val_sq_err
         # Penalise predictions that don't vary across the time series
         thisDiff = np.mean(np.abs(np.diff(predictY, axis=1)))
@@ -427,7 +427,7 @@ def MakeNetwork(r):
     for i, neurons in enumerate(r.config['lstmWidth']):
         if neurons > 0:
             this_layer = MakeLayerModule('lstm', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
-                name= f'lstm_{neurons}')
+                name= f'lstm_{i}_{neurons}')
     
     # Add dense feed
     if feed_lens[FeedLoc.dense] > 0:
@@ -440,7 +440,7 @@ def MakeNetwork(r):
     r.modelEpoch = 0
 
     # mape = mean absolute percentage error
-    r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error'])
+    r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error', 'mean_squared_error'])
     #r.model.build(input_shape=(None, r.inFeatureCount))
     
     r.trainMetrics = TrainMetrics()
@@ -531,7 +531,6 @@ def TrainNetwork(r, inData, outData, final=True):
     PlotTrainMetrics(r)
 
     return
-
 
 #==========================================================================
 def MakeAndTrainNetwork(r, inData, outData):

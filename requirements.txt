@@ -1,8 +1,8 @@
 wheel
 numpy
 pandas
-tensorflow
-keras
+tensorflow=2.7.0
+keras=2.7.0
 keras-tuner
 matplotlib
 pycwatch

@@ -127,9 +127,6 @@ def PrepData(r:ModelResult, dfs:list):
     r.inFeatureList = list(dfs[0].columns)
     r.inFeatureCount = dfs[0].shape[-1]
 
-    # Plot a small sample of the input data
-    FE.PlotInData(r, dfs, 0, [0, 50])
-
     # Based on the config and the list of features, determine the feed location for each feature
     featureList = dfs[0].columns
 
@@ -181,6 +178,10 @@ def PrepData(r:ModelResult, dfs:list):
 dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
 dfs, inData, outData, prices = PrepData(r, dfs)
 
+
+# Plot a small sample of the input data
+FE.PlotInData(r, dfs, 0, [500, 700])
+
 # Print info about in & out data:
 print("The input feed locations for the features are:")
 for loc in range(FeedLoc.LEN):
@@ -200,7 +201,7 @@ printmd('### Prep data DONE')
 
 # ******************************************************************************
 # %% 
-# TRAIN
+# TRAIN SINGLE
 
 # To reload the NeuralNet function for debugging:
 if 1:
@@ -219,10 +220,9 @@ if single:
     
     # !@#$
     #r.config['lstmWidth'] = [64]
-    #r.config['epochs'] = 16
+    r.config['epochs'] = 8
     
     # Scale the input and output data
-    
 
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)
@@ -239,6 +239,7 @@ else:
     
 
 #%%
+# TRAIN BATCH
 if not single:
     # *****************************************************************************
     # Batch Run
@@ -320,4 +321,70 @@ if not single:
 printmd('## Batch run DONE')
 
 
+
 # %%
+# KERAS TUNER
+printmd("## Keras tuner")
+import keras_tuner as kt
+
+r.coinList = ['BTC', 'ETH']
+r.numHours = 24*365*5
+r.config['epochs'] = 8
+
+dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
+dfs, inData, outData, prices = PrepData(r, dfs)
+
+
+def build_model(hp):
+    r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
+    lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3)
+    r.config['lstmWidth'] = []
+    for i in range(lstmLayerCount):
+        r.config['lstmWidth'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=512, sampling='log'))
+    
+    r.config['bottleneckWidth'] = hp.Int(f"bottleneckWidth", min_value=8, max_value=512, sampling='log')
+    
+    NeuralNet.MakeNetwork(r)
+    return r.model
+
+tuner = kt.RandomSearch(
+    hypermodel=build_model,
+    objective="val_mean_absolute_error",
+    max_trials=1,
+    executions_per_trial=1, # number of attemps with the same settings
+    overwrite=True,
+    directory="my_dir",
+    project_name="helloworld",
+)
+
+tuner.search_space_summary()
+
+# Prep the training & validation data
+r.tInd = NeuralNet._CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentDays'])
+
+trainX = [arr[:,r.tInd['train'],:] for arr in inData]
+trainY = outData[:, r.tInd['train']]
+valX = [arr[:,r.tInd['val'],:] for arr in inData]
+valY = outData[:, r.tInd['val']]
+
+r.neutralTrainAbsErr = np.sum(np.abs(trainY)) / trainY.size
+r.neutralValAbsErr = np.sum(np.abs(valY)) / valY.size
+r.neutralTrainSqErr = np.sum(np.abs(trainY)**2) / trainY.size
+r.neutralValSqErr = np.sum(np.abs(valY)**2) / valY.size
+
+# Start
+start = time.time()
+tuner.search(trainX, trainY, validation_data=(valX, valY), epochs=r.config['epochs'], 
+                    batch_size=r.sampleCount, shuffle=True,
+                    verbose=1)
+
+end = time.time()
+r.trainTime = end-start
+print(f'Tuning Time (h:m:s)= {NeuralNet.SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
+
+tuner.results_summary()
+
+# %%
+import tensorflow.keras as tfk
+tfk.Model
+tfk.Model.fit
