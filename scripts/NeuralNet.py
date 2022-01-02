@@ -436,7 +436,7 @@ def MakeNetwork(r):
     # Dense layer
     main_output = layers.Dense(units=r.outFeatureCount, activation='linear', name='final_output')(this_layer)
     
-    r.model = models.Model(inputs=feeds, outputs=[main_output])
+    r.model = CustomModel(inputs=feeds, outputs=[main_output])
     r.modelEpoch = 0
 
     # mape = mean absolute percentage error
@@ -697,3 +697,59 @@ def TestNetwork(r, priceData, inData, outData):
     print('Scores (1:neutral, >1 :better than neutral)')
     print('Train Score: {:.3f}\nTest Score: {:.3f} '.format(r.trainScore, r.testScore))
     return
+
+#==========================================================================
+from tensorflow.python.keras.engine import data_adapter
+class CustomModel(tf.keras.Model):
+  def test_step(self, data):
+    """The logic for one evaluation step.
+    Overridden by Dean to allow for the val_x to have more timesteps than
+    val_y. In this case, y_pred is truncated to the length of val_y, cutting
+    off the initial entries.
+    The purpose here is that the start of the prediction is used for
+    building state and not for evaluation. That section can overlap with 
+    the training set as it's not used for evaluation.
+
+    This method can be overridden to support custom evaluation logic.
+    This method is called by `Model.make_test_function`.
+
+    This function should contain the mathematical logic for one step of
+    evaluation.
+    This typically includes the forward pass, loss calculation, and metrics
+    updates.
+
+    Configuration details for *how* this logic is run (e.g. `tf.function` and
+    `tf.distribute.Strategy` settings), should be left to
+    `Model.make_test_function`, which can also be overridden.
+
+    Args:
+      data: A nested structure of `Tensor`s.
+
+    Returns:
+      A `dict` containing values that will be passed to
+      `tf.keras.callbacks.CallbackList.on_train_batch_end`. Typically, the
+      values of the `Model`'s metrics are returned.
+    """
+    # Unpack the data
+    data = data_adapter.expand_1d(data)
+    x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
+    # Compute predictions
+    y_pred = self(x, training=False)
+    # CUSTOM LINE: shrink y_pred to the size of y
+    # (x can have more timesteps than y)
+    y_pred = y_pred[:, -y.shape[-2]:, :] # samples, timesteps, features
+    # END CUSTOM LINE
+    # Updates stateful loss metrics.
+    self.compiled_loss(
+        y, y_pred, sample_weight, regularization_losses=self.losses)
+    # Update the metrics
+    self.compiled_metrics.update_state(y, y_pred, sample_weight)
+    # Collect metrics to return
+    return_metrics = {}
+    for metric in self.metrics:
+      result = metric.result()
+      if isinstance(result, dict):
+        return_metrics.update(result)
+      else:
+        return_metrics[metric.name] = result
+    return return_metrics
