@@ -467,13 +467,8 @@ def PrintNetwork(r):
     return
 
 #==========================================================================
-def TrainNetwork(r, inData, outData, final=True):
-    """
-    final == True indicates that this is the final call for TrainNetwork for
-    this model.
-    """
-
-    # Generate validation data
+def PrepTrainNetwork(r, inData, outData) -> dict :
+        # Generate validation data
     r.tInd = _CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentDays'])
     
     valI = r.tInd['val'] # Validation indices
@@ -518,14 +513,39 @@ def TrainNetwork(r, inData, outData, final=True):
     r.neutralValAbsErr = np.sum(np.abs(valY)) / valY.size
     r.neutralTrainSqErr = np.sum(np.abs(trainY)**2) / trainY.size
     r.neutralValSqErr = np.sum(np.abs(valY)**2) / valY.size
-    
-    start = time.time()
 
-    printoutCb.startTime = time.time()
-    hist = r.model.fit(trainX, trainY, epochs=r.config['epochs'], validation_data=(valX, valY),
-                     batch_size=r.sampleCount, shuffle=True,
-                     verbose=0, callbacks=callbacks, initial_epoch=r.modelEpoch+1)
-                     
+    fitArgs = {
+        'x':trainX,
+        'y':trainY,
+        'epochs':r.config['epochs'],
+        'validation_data':(valX, valY),
+        'batch_size':r.sampleCount,
+        'shuffle':True,
+        'verbose':0,
+        'callbacks':callbacks,
+        'initial_epoch':r.modelEpoch+1
+    }
+
+    return fitArgs, checkpointCb, printoutCb
+    
+
+
+#==========================================================================
+def TrainNetwork(r, inData, outData, final=True):
+    """
+    final == True indicates that this is the final call for TrainNetwork for
+    this model.
+    """
+
+    # Pre-fit tasks
+    fitArgs, checkpointCb, printoutCb = PrepTrainNetwork(r, inData, outData)
+    
+    # FIT
+    start = time.time()
+    printoutCb.startTime = start
+    hist = r.model.fit(**fitArgs)
+
+    # Post-fit tasks
     if r.modelEpoch == -1:
         r.trainHistory = hist.history
     else:

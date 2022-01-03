@@ -349,35 +349,21 @@ def build_model(hp):
 
 tuner = kt.RandomSearch(
     hypermodel=build_model,
-    objective="val_mean_absolute_error",
+    objective=kt.Objective("fitness", direction="max"),
     max_trials=1,
     executions_per_trial=1, # number of attemps with the same settings
     overwrite=True,
-    directory="my_dir",
-    project_name="helloworld",
+    directory="keras_tuner",
+    project_name="fortune_test",
 )
 
 tuner.search_space_summary()
 
-# Prep the training & validation data
-r.tInd = NeuralNet._CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentDays'])
-
-trainX = [arr[:,r.tInd['train'],:] for arr in inData]
-trainY = outData[:, r.tInd['train']]
-valX = [arr[:,r.tInd['val'],:] for arr in inData]
-valY = outData[:, r.tInd['val']]
-
-r.neutralTrainAbsErr = np.sum(np.abs(trainY)) / trainY.size
-r.neutralValAbsErr = np.sum(np.abs(valY)) / valY.size
-r.neutralTrainSqErr = np.sum(np.abs(trainY)**2) / trainY.size
-r.neutralValSqErr = np.sum(np.abs(valY)**2) / valY.size
+fitArgs, checkpointCb, printoutCb = NeuralNet.PrepTrainNetwork(r, inData, outData)
 
 # Start
 start = time.time()
-tuner.search(trainX, trainY, validation_data=(valX, valY), epochs=r.config['epochs'], 
-                    batch_size=r.sampleCount, shuffle=True,
-                    verbose=1)
-
+tuner.search(**fitArgs)
 end = time.time()
 r.trainTime = end-start
 print(f'Tuning Time (h:m:s)= {NeuralNet.SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
