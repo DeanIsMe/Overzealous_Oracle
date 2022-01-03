@@ -9,7 +9,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
-from tensorflow import keras
 import tensorflow.keras.layers as layers
 import tensorflow.keras.models as models
 import tensorflow.keras.optimizers as optimizers
@@ -70,26 +69,31 @@ class FitnessCb(tf.keras.callbacks.Callback):
     #==========================================================================
     def on_epoch_end(self, epoch, logs={}):
         fitness = 1/logs['val_mean_squared_error']
-
-        predictY = self.model.predict(self.inData, batch_size=100)
-        # Note that the prediction has some initial period to build up state,
-        # then the actual prediction (len=targetTimeSteps)
-        err = predictY[:,-self.targetTimeSteps:,:] - self.outTarget
-        
-        # Penalise predictions that don't vary across the time series
-        thisDiff = np.mean(np.abs(np.diff(predictY, axis=1)))
-        debug = 0
-        if debug: print('Dif Score {:5f}, Lower {:5f}, Upper {:5f}'.format(thisDiff, self.avgDiffLower, self.avgDiffUpper), end='')
         penalty = 1. # fitness is multiplied by this penalty
-        if thisDiff < self.avgDiffUpper:
-            penaltyLower = 0.001
-            penaltyUpper = 1
-            pos = (thisDiff - self.avgDiffLower) / (self.avgDiffUpper - self.avgDiffLower) # 0 to 1
-            penalty = (pos) * (penaltyUpper - penaltyLower) + penaltyLower
-            penalty = np.clip(penalty, penaltyLower, penaltyUpper)
-            fitness *= penalty
-            if debug: print(' scaler = {:5f}'.format(penalty))
-        if debug: print('') # new line
+        
+
+        if 0: # !@# I've currently disabled the penalty calculations as it's expensive to predict
+            # Ideally, I'd be able to access predictions from the callback, but keras doesn't
+            # allow that. I could write a metric to perform this calculation, but that's a
+            # challenge to use onlly 'tensor operations'
+            predictY = self.model.predict(self.inData, batch_size=100)
+            # Note that the prediction has some initial period to build up state,
+            # then the actual prediction (len=targetTimeSteps)
+            err = predictY[:,-self.targetTimeSteps:,:] - self.outTarget
+            
+            # Penalise predictions that don't vary across the time series
+            thisDiff = np.mean(np.abs(np.diff(predictY, axis=1)))
+            debug = 0
+            if debug: print('Dif Score {:5f}, Lower {:5f}, Upper {:5f}'.format(thisDiff, self.avgDiffLower, self.avgDiffUpper), end='')
+            if thisDiff < self.avgDiffUpper:
+                penaltyLower = 0.001
+                penaltyUpper = 1
+                pos = (thisDiff - self.avgDiffLower) / (self.avgDiffUpper - self.avgDiffLower) # 0 to 1
+                penalty = (pos) * (penaltyUpper - penaltyLower) + penaltyLower
+                penalty = np.clip(penalty, penaltyLower, penaltyUpper)
+                fitness *= penalty
+                if debug: print(' scaler = {:5f}'.format(penalty))
+            if debug: print('') # new line
         
         logs['fitness'] = fitness # for choosing the best model
         logs['penalty'] = penalty
@@ -99,6 +103,8 @@ class FitnessCb(tf.keras.callbacks.Callback):
 class CheckpointCb(tf.keras.callbacks.Callback):
     """
     Performs early stopping
+    I could alternatively use the keras built-in method: keras.callbacks.EarlyStopping
+    venv\Lib\site-packages\tensorflow\python\keras\callbacks.py
     """
     def __init__(self):
         pass
@@ -144,7 +150,7 @@ class CheckpointCb(tf.keras.callbacks.Callback):
         
         logs['newBest'] = bestResult
         self.prevFitness = fitness
-
+    
 
 #==========================================================================
 class PrintoutCb(tf.keras.callbacks.Callback):
@@ -178,7 +184,7 @@ class PrintoutCb(tf.keras.callbacks.Callback):
 
         def PrintHeaders():
             # Headers for the text table printed during training
-            print(f"Epoch TrainErrSq ValErrSq Fitness Penalty ProcTime Remaining")
+            print(f"Epoch TrainErrSq ValErrSq Fitness ProcTime Remaining")
 
         # Epoch printout
         if logs['newBest'] or (epoch%10)==0 or now - self.prevPrintTime > 60. \
@@ -190,7 +196,8 @@ class PrintoutCb(tf.keras.callbacks.Callback):
             print(f"{epoch:5}" +
             f"{logs['loss']:10.3f} " +
             f"{logs['val_mean_squared_error']:8.3f} " +
-            f"{logs['fitness']:7.3f} {logs['penalty']:7.3f} " +
+            f"{logs['fitness']:7.3f} " +
+            #f"{logs['penalty']:7.3f} " +
             f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
             f"{' - New best! ' if logs['newBest'] else ''}")
             self.printCount += 1
@@ -492,13 +499,6 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
     callbacks.append(printoutCb)
 
 
-    # Save best model
-#    fileBestWeights = "bestModel.h5"
-#    checkpoint = keras.callbacks.ModelCheckpoint(fileBestWeights,
-#                                                 monitor='fitness', verbose=0, save_best_only=True,  mode='max')
-#    callbacks.append(checkpoint)
-
-#    callbacks += [keras.callbacks.TensorBoard(log_dir='./logs2', histogram_freq=0, batch_size=32, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)]
     if r.modelEpoch == -1:
         print(f"\nStarting training. Max {r.config['epochs']} epochs")
     else:
@@ -564,6 +564,7 @@ def TrainNetwork(r, inData, outData, final=True):
     
     r.modelEpoch = hist.epoch[-1]
 
+    # Model reverting
     if final and r.config['revertToBest']:
         if checkpointCb.bestEpoch not in [0, r.modelEpoch]:
             print(f'Reverting to the model with best validation (epoch {checkpointCb.bestEpoch})')

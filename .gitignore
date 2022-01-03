@@ -2,6 +2,7 @@
 *keys.py
 temp*
 venv*
+keras_tuner*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
