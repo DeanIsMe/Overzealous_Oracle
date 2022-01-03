@@ -34,28 +34,21 @@ def SecToHMS(t):
     return f"{t//3600.:2.0f}:{(t%3600)//60.:02.0f}:{t%60.:02.0f}"
 
 #==========================================================================
-class ValidationCb(tf.keras.callbacks.Callback):
+class FitnessCb(tf.keras.callbacks.Callback):
     """
     This callback is used to validate/test the model after each epoch. 
-    Note that Keras supports this functionality with validation_data in .fit(), but a downside
-    with that for a LSTM is that it starts the validation without building
-    state. Hence, I made this custom callback. This builds state before the prediction range - so the validation
-    is a better representation of its actual usage. Allows for better-informed
-    early stopping.
     """
     def __init__(self):
         pass
     
     
-    def setup(self, inData, outTarget, patience, maxEpochs, modelEpoch):
+    def setup(self, inData, outTarget):
         # inData covers all of the time steps of outData, PLUS some earlier time steps
         # these earlier timesteps are used for building state
         self.inData = inData # The input data that will be used for validation
         self.outTarget = np.array(outTarget) # The target output. A perfect prediction model would predict these values
         self.targetSize = outTarget.size # Number of points
         self.targetTimeSteps = outTarget.shape[-2]
-        self.maxEpochs = maxEpochs
-        self.curEpoch = modelEpoch
         
         # Determine the thresholds for penalising lack of movement
         # This is to avoid uneventful results that don't do anything
@@ -72,33 +65,11 @@ class ValidationCb(tf.keras.callbacks.Callback):
         avgDiffTarget = totalDiff / diffCount
         self.avgDiffUpper = avgDiffTarget * 0.25 # above this, there's no penalisation
         self.avgDiffLower = avgDiffTarget * 0.1 # Below this, the penalty is a maximum
-        
-        # Tracking the best result:
-        self.bestFitness = 0
-        self.bestWeights = []
-        self.bestEpoch = 0
-        # Early stopping
-        self.wait = 0
-        self.patience = patience # Epochs before stopping early. Set to 0 to disable early stopping
 
-        self.prevFitness = 0
-        self.stopped_epoch = 0
-
-        self.startTime = time.time()
-        self.prevPrintTime = time.time()
-        self.printCount = 0 # the number of times we've printed
-        self.epochTimeHist = [] # a list of the previous ~3 epoch training durations
            
     #==========================================================================
     def on_epoch_end(self, epoch, logs={}):
-        self.curEpoch += 1
-        if not self.epochTimeHist:
-            self.epochTimeHist.append(self.startTime)
-
-
-        val_abs_err = logs['val_mean_absolute_error']
-        val_sq_err = logs['val_mean_squared_error']
-        fitness = 1/val_sq_err
+        fitness = 1/logs['val_mean_squared_error']
 
         predictY = self.model.predict(self.inData, batch_size=100)
         # Note that the prediction has some initial period to build up state,
@@ -122,40 +93,43 @@ class ValidationCb(tf.keras.callbacks.Callback):
         
         logs['fitness'] = fitness # for choosing the best model
         logs['penalty'] = penalty
-        
+
+
+#==========================================================================
+class CheckpointCb(tf.keras.callbacks.Callback):
+    """
+    Performs early stopping
+    """
+    def __init__(self):
+        pass
+    
+    
+    def setup(self, patience):
+        # Tracking the best result:
+        self.bestFitness = 0
+        self.bestWeights = []
+        self.bestEpoch = 0
+        # Early stopping
+        self.wait = 0
+        self.patience = patience # Epochs before stopping early. Set to 0 to disable early stopping
+
+        self.prevFitness = 0
+        self.stopped_epoch = 0
+
+           
+    #==========================================================================
+    def on_epoch_end(self, epoch, logs={}):
+
+        fitness = logs['fitness']
+
         # Check if this is the best result
         bestResult = False
         if fitness > self.bestFitness:
             self.bestFitness = fitness
             self.bestWeights = self.model.get_weights()
-            self.bestEpoch = self.curEpoch
+            self.bestEpoch = epoch
             bestResult = True
-        
-        # add the epoch duration to the list
-        now = time.time()
-        self.epochTimeHist.append(now)
 
-        epochsRemaining = self.maxEpochs - self.curEpoch
-        timePerEpoch = np.mean(np.diff(self.epochTimeHist[-4:]))
-        timeRemaining = epochsRemaining * timePerEpoch
-
-        def PrintHeaders():
-            # Headers for the text table printed during training
-            print(f"Epoch TrainErrSq ValErrSq Fitness Penalty ProcTime Remaining")
-
-        # Epoch printout
-        if bestResult or (self.curEpoch%10)==0 or now - self.prevPrintTime > 60. \
-            or self.curEpoch < 5 or self.curEpoch == self.maxEpochs:
-            if self.printCount%10 == 0:
-                PrintHeaders()
-            #print(f"Epoch {self.curEpoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
-                 #f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
-            print(f"{self.curEpoch:5} {logs['loss']:10.3f} {val_sq_err:8.3f} {fitness:7.3f} {penalty:7.3f} " +
-                f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
-                f"{' - New best! ' if bestResult else ''}")
-            self.printCount += 1
-            self.prevPrintTime = now
-                
         # Early stopping
         if self.patience != 0:
             if fitness == self.bestFitness:
@@ -166,10 +140,62 @@ class ValidationCb(tf.keras.callbacks.Callback):
                     self.stopped_epoch = epoch
                     self.model.stop_training = True
                     print('No validation improvement in {} epochs'.format(self.patience))
-                    print('STOPPING TRAINING EARLY AT EPOCH {}'.format(self.curEpoch))
+                    print('STOPPING TRAINING EARLY AT EPOCH {}'.format(epoch))
         
+        logs['newBest'] = bestResult
         self.prevFitness = fitness
-        
+
+
+#==========================================================================
+class PrintoutCb(tf.keras.callbacks.Callback):
+    """
+    This callback prints info
+    """
+    def __init__(self):
+        pass
+    
+    
+    def setup(self, maxEpochs):
+        self.maxEpochs = maxEpochs
+
+        self.startTime = time.time()
+        self.prevPrintTime = time.time()
+        self.printCount = 0 # the number of times we've printed
+        self.epochTimeHist = [] # a list of the previous ~3 epoch training durations
+           
+    #==========================================================================
+    def on_epoch_end(self, epoch, logs={}):
+        if not self.epochTimeHist:
+            self.epochTimeHist.append(self.startTime)
+
+        # add the epoch duration to the list
+        now = time.time()
+        self.epochTimeHist.append(now)
+
+        epochsRemaining = self.maxEpochs - epoch
+        timePerEpoch = np.mean(np.diff(self.epochTimeHist[-4:]))
+        timeRemaining = epochsRemaining * timePerEpoch
+
+        def PrintHeaders():
+            # Headers for the text table printed during training
+            print(f"Epoch TrainErrSq ValErrSq Fitness Penalty ProcTime Remaining")
+
+        # Epoch printout
+        if logs['newBest'] or (epoch%10)==0 or now - self.prevPrintTime > 60. \
+            or epoch < 5 or epoch+1 == self.maxEpochs:
+            if self.printCount%10 == 0:
+                PrintHeaders()
+            #print(f"Epoch {epoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
+                 #f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
+            print(f"{epoch:5}" +
+            f"{logs['loss']:10.3f} " +
+            f"{logs['val_mean_squared_error']:8.3f} " +
+            f"{logs['fitness']:7.3f} {logs['penalty']:7.3f} " +
+            f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
+            f"{' - New best! ' if logs['newBest'] else ''}")
+            self.printCount += 1
+            self.prevPrintTime = now
+
     
 # To allow pickling:
 # https://stackoverflow.com/questions/44855603/typeerror-cant-pickle-thread-lock-objects-in-seq2seq
@@ -419,7 +445,7 @@ def MakeNetwork(r):
     main_output = layers.Dense(units=r.outFeatureCount, activation='linear', name='final_output')(this_layer)
     
     r.model = CustomModel(inputs=feeds, outputs=[main_output])
-    r.modelEpoch = 0
+    r.modelEpoch = -1
     r.trainHistory = {}
 
     # mape = mean absolute percentage error
@@ -447,30 +473,28 @@ def TrainNetwork(r, inData, outData, final=True):
     this model.
     """
 
+    # Generate validation data
     r.tInd = _CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentDays'])
-    
-    #Callbacks
-    callbacks = []
-    
-    # Callback to validate data
-    validationCb = ValidationCb()
-
     
     valI = r.tInd['val'] # Validation indices
     startPredict = max(0, valI[0]-r.config['evaluateBuildStatePoints']) # This number of time steps are used to build state before starting predictions
     valX = [arr[:, startPredict:valI[-1]+1, :] for arr in inData]
     valY = outData[:,valI,:]
 
-    validationCb.setup(valX, valY, r.config['earlyStopping'], r.config['epochs'], r.modelEpoch)
-    
-    # The model could be partially trained
-    epochsLeft = r.config['epochs'] - r.modelEpoch
-    if epochsLeft == 0:
-        print('\r\n\n\nERROR! NO EPOCHS REMAINING ON TRAINING!')
-        return
-    
-    
-    callbacks.append(validationCb)
+    #Callbacks
+    callbacks = []
+
+    fitnessCb = FitnessCb()
+    fitnessCb.setup(valX, valY)
+    callbacks.append(fitnessCb)
+
+    checkpointCb = CheckpointCb()
+    checkpointCb.setup(r.config['earlyStopping'])
+    callbacks.append(checkpointCb)
+
+    printoutCb = PrintoutCb()
+    printoutCb.setup(r.config['epochs'])
+    callbacks.append(printoutCb)
 
 
     # Save best model
@@ -480,13 +504,12 @@ def TrainNetwork(r, inData, outData, final=True):
 #    callbacks.append(checkpoint)
 
 #    callbacks += [keras.callbacks.TensorBoard(log_dir='./logs2', histogram_freq=0, batch_size=32, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)]
-    if r.modelEpoch == 0:
+    if r.modelEpoch == -1:
         print(f"\nStarting training. Max {r.config['epochs']} epochs")
     else:
-        print(f"\nStarting training. At epoch {r.modelEpoch}. Max {r.config['epochs']} epochs. {epochsLeft} remaining.")
+        print(f"\nStarting training. At epoch {r.modelEpoch+1}. Max {r.config['epochs']} epochs. {r.config['epochs'] - r.modelEpoch -1} remaining.")
 
         
-    
     trainX = [arr[:,r.tInd['train'],:] for arr in inData]
     trainY = outData[:, r.tInd['train']]
     valY = outData[:, r.tInd['val']]
@@ -498,34 +521,35 @@ def TrainNetwork(r, inData, outData, final=True):
     
     start = time.time()
 
-    validationCb.startTime = time.time()
-    hist = r.model.fit(trainX, trainY, epochs=epochsLeft, validation_data=(valX, valY),
+    printoutCb.startTime = time.time()
+    hist = r.model.fit(trainX, trainY, epochs=r.config['epochs'], validation_data=(valX, valY),
                      batch_size=r.sampleCount, shuffle=True,
-                     verbose=0, callbacks=callbacks)
-    if r.modelEpoch == 0:
+                     verbose=0, callbacks=callbacks, initial_epoch=r.modelEpoch+1)
+                     
+    if r.modelEpoch == -1:
         r.trainHistory = hist.history
     else:
         # When 'reverting', the model epoch jumps backwards
-        # Remove the 'reverted' section of train metrics, and append the new
-        for key in r.trainHistory:
-            r.trainHistory[key] = r.trainHistory[key][:r.modelEpoch]
-            r.trainHistory[key] = r.trainHistory[key] + hist.history[key]
+        # Overwrite the 'reverted' section of train metrics, and append the new
+        for key in hist.history.keys():
+            r.trainHistory[key][hist.epoch[0]:hist.epoch[-1]+1] = hist.history[key]
+ 
 
-    if validationCb.curEpoch != len(list(r.trainHistory.values())[0]):
+    if hist.epoch[-1]+1 != len(list(r.trainHistory.values())[0]):
         raise Exception("Cur epoch doesn't match training hist. Program error")
     
     end = time.time()
     r.trainTime = end-start
     print(f'Training Time (h:m:s)= {SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
     
-    r.modelEpoch = validationCb.curEpoch
+    r.modelEpoch = hist.epoch[-1]
 
     if final and r.config['revertToBest']:
-        if validationCb.bestEpoch > 0:
-            print(f'Reverting to the model with best validation (epoch {validationCb.bestEpoch})')
-            r.model.set_weights(validationCb.bestWeights)
+        if checkpointCb.bestEpoch not in [0, r.modelEpoch]:
+            print(f'Reverting to the model with best validation (epoch {checkpointCb.bestEpoch})')
+            r.model.set_weights(checkpointCb.bestWeights)
             # Note that r.trainHistory history for the full training
-            r.modelEpoch = validationCb.bestEpoch
+            r.modelEpoch = checkpointCb.bestEpoch
     
     PlotTrainMetrics(r)
 
