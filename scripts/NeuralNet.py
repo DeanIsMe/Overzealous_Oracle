@@ -271,40 +271,42 @@ def _CalcIndices(tMax, dataRatios, exclude):
 
 
 #==========================================================================
-def PlotTrainMetrics(r, subplot=False):
+def PlotTrainMetrics(r, axIn=None):
     #Plot Training
-    if not subplot:
-        fig = plt.figure()
+    if axIn is None:
+        fig, ax = plt.subplots()
         fig.tight_layout()
-#    ax = plt.gca()
+    else:
+        ax = axIn
+
     maxY = -9e9
     minY = 9e9
     
     lines = []
     lines.append({'label':'TrainSq',
-                  'data':r.neutralTrainSqErr / r.trainHistory['mean_squared_error'],
+                  'data':r.trainHistory['train_score_sq'],
                   'ls':'-', 'color':'C0'})
     lines.append({'label':'ValSq',
-                  'data':r.neutralValSqErr / r.trainHistory['val_mean_squared_error'],
+                  'data':r.trainHistory['val_score_sq'],
                   'ls':'-', 'color':'C1'})
     lines.append({'label':'TrainAbs',
-                  'data':r.neutralTrainAbsErr / r.trainHistory['mean_absolute_error'],
+                  'data':r.trainHistory['train_score_abs'],
                   'ls':':', 'color':'C0'})
     lines.append({'label':'ValAbs',
-                  'data':r.neutralValAbsErr / r.trainHistory['val_mean_absolute_error'],
+                  'data':r.trainHistory['val_score_abs'],
                   'ls':':', 'color':'C1'})
     handles = []
     for line in lines:
-        lx, = plt.plot(line['data'], label=line['label'], linestyle=line['ls'], color=line['color'])
+        lx, = ax.plot(line['data'], label=line['label'], linestyle=line['ls'], color=line['color'])
         handles.append(lx)
         maxY = max(maxY, max(line['data']))
         minY = min(minY, min(line['data']))
-    plt.legend(handles = handles)
+    ax.legend(handles = handles)
 #    ax.set_yscale('log')
     
-    if not subplot:
-        plt.title('Training Scores (1=neutral, >1:better)')
-        plt.show()
+    if axIn is None:
+        ax.set_title('Training Scores (1=neutral, >1:better)')
+        fig.show()
     
     return (maxY, minY)
 

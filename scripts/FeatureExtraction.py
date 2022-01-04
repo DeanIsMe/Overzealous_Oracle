@@ -23,19 +23,17 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
         tInd = range(tRange[0], tRange[1])
     outDim = output.shape[-1]            
     x = tInd
-    fig = plt.figure(figsize=(r.config['plotWidth'] ,10))
+    fig, (ax1, ax2) = plt.subplots(2, sharex=True, figsize=(r.config['plotWidth'] , 7))
     fig.tight_layout()
-    ax1 = plt.subplot(2,1,1)
-    plt.plot(x,prices[sample, tInd])
-    plt.title('Price of {}'.format(r.coinList[sample]))
-    plt.subplot(2,1,2, sharex=ax1)
+    ax1.plot(x,prices[sample, tInd])
+    ax1.set_title('Price of {}'.format(r.coinList[sample]))
     lines = list(range(outDim))
     for i in range(outDim):
-        lines[i], = plt.plot(x,output[sample,tInd,i], label='Out{0}({1})'.format(i, r.config['outputRanges'][i]))
-    l0, = plt.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
-    plt.legend(handles = lines)
-    plt.title('Output for: {}'.format(r.coinList[sample]))
-    plt.show()
+        lines[i], = ax2.plot(x,output[sample,tInd,i], label='Out{0}({1})'.format(i, r.config['outputRanges'][i]))
+    l0, = ax2.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
+    ax2.legend(handles = lines)
+    ax2.set_title('Output for: {}'.format(r.coinList[sample]))
+    fig.show()
     
 #==========================================================================
 def PlotInData(r, dfs, sample=0, tRange=0):
@@ -44,20 +42,19 @@ def PlotInData(r, dfs, sample=0, tRange=0):
         tInd = np.array(range(r.timesteps))
     else:
         tInd = np.array(range(tRange[0], tRange[1]))   
-    x = tInd    
-    fig = plt.figure(figsize=(r.config['plotWidth'], 6))
+    x = tInd
+    fig, ax = plt.subplots(figsize=(r.config['plotWidth'], 4))
     fig.tight_layout()
-    plt.title('Inputs Data for {}'.format(r.coinList[sample]))
     df = dfs[sample]
     lines = []
     for i, col in enumerate(df.columns):
         if col == 'filler' or col == 'time':
             continue
-        lines += plt.plot(x, df[col][tInd], label=col)
-    l0, = plt.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
-    plt.legend(handles = lines)
-    plt.title('Input Data for: {}'.format(r.coinList[sample]))
-    plt.show()
+        lines += ax.plot(x, df[col][tInd], label=col)
+    l0, = ax.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
+    ax.legend(handles = lines)
+    ax.set_title('Input Data for: {}'.format(r.coinList[sample]))
+    fig.show()
 
 #==========================================================================
 def CalcFavScores(config, prices):

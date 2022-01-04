@@ -22,36 +22,31 @@ from NeuralNet import PlotTrainMetrics
 #        plt.subplot(bat2Len, bat1Len, p)
         
 # OPTION B: batVal2 along x (columns), batVal1 along y (rows)
-plt.figure(figsize=(bat2Len*5,bat1Len*3)); p = 1
+fig, axs = plt.subplots(bat1Len, bat2Len, figsize=(bat2Len*5,bat1Len*3)); p = 1
 minY = 9e9
 maxY = -9e9
-allAx = []
 for idx1 in range(bat1Len):
     rowAx = []
     for idx2 in range(bat2Len):
-        plt.subplot(bat1Len, bat2Len, p)
-        
+        ax = axs[idx1, idx2]
         r = results[idx2][idx1] # Pointer for brevity
         # As 'p' increases, plot starts top-left and moves to the right
         ax = plt.gca()
-        rowAx.append(ax)
         
-        (thisMaxY, thisMinY) = PlotTrainMetrics(r, True)
+        (thisMaxY, thisMinY) = PlotTrainMetrics(r, ax)
         maxY = max(maxY, thisMaxY)
         minY = min(minY, thisMinY)
         
         plt.title('{}:{}, {}:{}'.format(bat2Name, bat2Val[idx2], bat1Name, bat1Val[idx1]))
         ax.set_yscale('log')
         
-        p += 1
         print('{}:{}, {}:{}'.format(bat2Name, bat2Val[idx2], bat1Name, bat1Val[idx1]))
         print('Train Score: {:5}\nTest Score: {:5} (1=neutral)'.format(r.trainScore, r.testScore))
-    allAx.append(rowAx)
     
 for idx1 in range(bat1Len):
     for idx2 in range(bat2Len):
-        allAx[idx1][idx2].set_ylim(bottom=max(minY,0.1), top=maxY)
-        allAx[idx1][idx2].set_xlim(left=0, right=r.config['epochs'])
+        axs[idx1,idx2].set_ylim(bottom=max(minY,0.1), top=maxY)
+        axs[idx1,idx2].set_xlim(left=0, right=r.config['epochs'])
 plt.show()
 
 # 1 PLOT, MULTIPLE LINES
