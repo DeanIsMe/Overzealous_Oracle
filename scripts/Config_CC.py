@@ -47,7 +47,7 @@ def GetConfig():
      
     # Neural Network
     config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM to reduce the LSTM size
-    config['lstmWidth'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
+    config['lstmWidths'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
     # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
     # The num of conv layers will be the greatest number of valid layers
     # If any parameter is empty ([] or 0), then there will be no convolutional layers

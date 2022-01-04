@@ -39,7 +39,7 @@ def GetConfig():
 #    config.exchMaxDaysPast = 300
 #    
 #    # Neural Network
-    config['lstmWidth'] = [64] # Number of neurons in LSTM
+    config['lstmWidths'] = [64] # Number of neurons in LSTM
     config['epochs'] = 64 # Number of complete passes of the data
 #    config.neuronsFactor = 0.8 # Size of the hidden layer
 #    config.divideFcn = 'dividerand' # divideIntBlocks or dividerand

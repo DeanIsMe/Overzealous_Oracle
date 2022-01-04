@@ -219,7 +219,7 @@ if single:
     r.batchRunName = ''
     
     # !@#$
-    #r.config['lstmWidth'] = [64]
+    #r.config['lstmWidths'] = [64]
     r.config['epochs'] = 8
     
     # Scale the input and output data
@@ -338,9 +338,9 @@ dfs, inData, outData, prices = PrepData(r, dfs)
 def build_model(hp):
     r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
     lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3)
-    r.config['lstmWidth'] = []
+    r.config['lstmWidths'] = []
     for i in range(lstmLayerCount):
-        r.config['lstmWidth'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=512, sampling='log'))
+        r.config['lstmWidths'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=512, sampling='log'))
     
     r.config['bottleneckWidth'] = hp.Int(f"bottleneckWidth", min_value=8, max_value=512, sampling='log')
     

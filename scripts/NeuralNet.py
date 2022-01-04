@@ -439,7 +439,7 @@ def MakeNetwork(r):
             name= f"bottleneck_{bnw}")
 
     # LSTM layers
-    for i, neurons in enumerate(r.config['lstmWidth']):
+    for i, neurons in enumerate(r.config['lstmWidths']):
         if neurons > 0:
             this_layer = MakeLayerModule('lstm', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
                 name= f'lstm_{i}_{neurons}')
