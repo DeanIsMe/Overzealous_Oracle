@@ -17,10 +17,13 @@ def GetConfig():
     config['vixMaxPeriodPast'] = 24*14
     
     # RSI - Relative Strength Index
-    config['rsiWindowLen'] = 96 # The span of the EMA calc for RSI
+    config['rsiWindowLens'] = [24, 96] # The span of the EMA calc for RSI
     
     # Exponential Moving Average
-    config['emaLengths'] = [24, 168, 400] # The span of the EMAs
+    config['emaLengths'] = [] # The span of the EMAs
+
+    # I define divergence as the price relative to the moving average of X points
+    config['dvgLengths'] = [24, 168, 400]
 
 
 
@@ -99,15 +102,13 @@ def GetConfig():
     # Note that a feature can be used at multiple feed locations
     flc = [[] for i in range(FeedLoc.LEN)]
 
-    flc[FeedLoc.dense].append('high')
-    flc[FeedLoc.dense].append('low')
-    flc[FeedLoc.lstm].append('volume')
-    flc[FeedLoc.conv].append('close')
     flc[FeedLoc.conv].append('ema')
+    flc[FeedLoc.conv].append('dvg')
+    flc[FeedLoc.lstm].append('volume')
     flc[FeedLoc.lstm].append('logDiff')
+    flc[FeedLoc.lstm].append('rsi')
     flc[FeedLoc.dense].append('logDiff')
     flc[FeedLoc.dense].append('vix')
-    flc[FeedLoc.lstm].append('RSI')
 
     config['feedLoc'] = flc
 

@@ -99,7 +99,11 @@ def PrepData(r:ModelResult, dfs:list):
     FE.AddVix(r, dfs, prices)
     FE.AddRsi(r, dfs)
     FE.AddEma(r, dfs)
-    FE.ScaleLoadedData(dfs) # High, Low, etc
+    FE.AddDivergence(r, dfs)
+    FE.ScaleVolume(dfs)
+
+    #FE.AddSpread(r, dfs)
+    #FE.PrepHighLowData(dfs) # High, Low, etc
 
     r.inFeatureList = list(dfs[0].columns)
     r.inFeatureCount = dfs[0].shape[-1]
@@ -157,7 +161,7 @@ dfs, inData, outData, prices = PrepData(r, dfs)
 
 
 # Plot a small sample of the input data
-FE.PlotInData(r, dfs, 0, [500, 700])
+FE.PlotInData(r, dfs, 0, [5000, 10000])
 
 # Print info about in & out data:
 print("The input feed locations for the features are:")
@@ -197,7 +201,7 @@ if single:
     
     # !@#$
     #r.config['lstmWidths'] = [64]
-    r.config['epochs'] = 8
+    r.config['epochs'] = 32
     
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)

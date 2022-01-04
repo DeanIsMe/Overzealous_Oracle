@@ -4,7 +4,6 @@ Created on Sun Aug 20 22:19:35 2017
 
 @author: Dean
 """
-
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,6 +15,8 @@ from pandas.core.frame import DataFrame
 
 #==========================================================================
 from IPython.display import Markdown, display
+
+from scripts.DataTypes import FeedLoc
 def printmd(string, color=None):
     if color is None:
         display(Markdown(string))
@@ -24,12 +25,13 @@ def printmd(string, color=None):
         display(Markdown(colorstr))
 
 #==========================================================================
-def PlotInData(r, dfs, sample=0, tRange=2000, columns=None):
+def PlotInData(r, dfs, sample=0, tRange=2000, colPatterns=[]):
     """
     Plots the input data for 1 sample (df)
     sample is the index of the sample to plot
     tRange Specifies the number of timesteps (or time range)) e.g. [2000, 4000]
-    columns specifies which features to plot. e.g. ['logDiff','ema1','ema2','ema3']
+    colPatterns specifies which features to plot. e.g. ['ema','rsi0_96']
+        a partial string is sufficient to match
     """
     if type(tRange) == int:
         tInd = np.array(range(r.timesteps))
@@ -40,15 +42,30 @@ def PlotInData(r, dfs, sample=0, tRange=2000, columns=None):
     fig.tight_layout()
     df = dfs[sample]
     lines = []
-    if columns is None:
-        for i, col in enumerate(df.columns):
-            if not(col == 'filler' or col == 'time'):
+    
+    if isinstance(colPatterns, str): colPatterns = [colPatterns]
+    if not colPatterns:
+        # Generate colPatterns from config feedLoc
+        colPatterns = set()
+        for f in range(FeedLoc.LEN):
+            for cp in r.config['feedLoc'][f]:
+                colPatterns.add(cp)
+    # Find all columns that match the pattern(s)
+    columns=[]
+    for col in df.columns:
+        for cp in colPatterns:
+            if cp in col:
                 columns.append(col)
+                break
+    # Plot the columns
     for col in columns:
         lines += ax.plot(x, df[col][tInd], label=col)
+    # Add price data
+    lines += ax.plot(x, ShiftAndScaleCol(df['close'][tInd]), label='price')
     l0, = ax.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
     ax.legend(handles = lines)
     ax.set_title('Input Data for: {}'.format(r.coinList[sample]))
+    ax.grid()
     #fig.show()
 
 #==========================================================================
@@ -64,12 +81,14 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
     fig.tight_layout()
     ax1.plot(x,prices[sample, tInd])
     ax1.set_title('Price of {}'.format(r.coinList[sample]))
+    ax1.grid()
     lines = list(range(outDim))
     for i in range(outDim):
         lines[i], = ax2.plot(x,output[sample,tInd,i], label='Out{0}({1})'.format(i, r.config['outputRanges'][i]))
     l0, = ax2.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
     ax2.legend(handles = lines)
     ax2.set_title('Output for: {}'.format(r.coinList[sample]))
+    ax2.grid()
     fig.show()
 
 #==========================================================================
@@ -233,11 +252,12 @@ def CalcFavourabilityScore(config, price_Data, tRange):
     return score
 
 #==========================================================================
-def Normalise(dfs, cols):
+def ScaleData(dfs, cols, quantile=0.90):
     """
     dfs is a list of data frames
-    cols is a list of the column names that need to be normalised
-    All values in all dataframes are normalised by the same ratio
+    cols is a list of the column names that need to be scaled
+    All values in all dataframes are scaled by the same ratio
+    quantile is 0. to 1. This quantile will scaled to =1
     """
     if not isinstance(cols, list):
         cols = [cols]
@@ -246,7 +266,7 @@ def Normalise(dfs, cols):
     vals = []
     for df in dfs:
         for col in cols:
-            vals.append(df[col].abs().quantile(0.90))
+            vals.append(df[col].abs().quantile(quantile))
     
     # Get the scaler
     scaler = 1 / np.mean(vals)
@@ -255,7 +275,20 @@ def Normalise(dfs, cols):
     for df in dfs:
         for col in cols:
             df.loc[:, col] *= scaler
-    
+
+#==========================================================================
+def ShiftAndScaleCol(col):
+    """
+    col is a pandas column name to adjust
+    Returns a shifted and scaled column
+    Usage:
+    df.loc[:, 'scaled'] = ShiftAndScaleCol(df.loc[:, 'close'])
+    Note that with this method, the column of the dataframe is scaled
+    independently from all other data, such that it has
+    a mean of 0 and scaled such that 90th percentile = 1
+    """
+    temp = col - col.mean()
+    return temp * (1 / temp.abs().quantile(0.90))
 
 #==========================================================================
 def AddVix(r, dfs, prices):
@@ -270,9 +303,9 @@ def AddVix(r, dfs, prices):
             dfs[i].loc[:, col] = volatility[i,:,j]
     
     # Volatility Normaliser
-    # Normalise all by the same amount
+    # Scale all by the same amount
     vixCols = [col for col in dfs[0].columns if 'vix' in col]
-    Normalise(dfs, vixCols)
+    ScaleData(dfs, vixCols)
             
             
 #==========================================================================
@@ -327,7 +360,7 @@ def AddRsi(r, dfs):
     I calculate a number that hovers around -1 to 1 (machine intuitive).
     dfs is a list of data frames; a data frame for each sample
     """
-    def CalcRSI(ser):
+    def CalcRSI(ser, windowLen):
         # ser is a data series
         # Get the difference in price from previous step
         delta = ser.diff()
@@ -335,44 +368,78 @@ def AddRsi(r, dfs):
         # row to calculate the differences
         delta = delta[1:]
         
-        # Make the positive gains (up) and negative gains (down) Series
+        # Make separate series for the positive gains (up) and negative gains (down)
         deltaUp, deltaDown = delta.copy(), delta.copy()
-        deltaUp[deltaUp < 0] = 0
-        deltaDown[deltaDown > 0] = 0
+        deltaUp[delta < 0] = 0
+        deltaDown[delta > 0] = 0
         
         # Exponential weighted moving average
         # Calculate the EWMA
         # 2 lines below are deprecated
-#        roll_up1 = pandas.stats.moments.ewma(up, span=r.config['rsiWindowLen'])
-#        roll_down1 = pandas.stats.moments.ewma(down.abs(), span=r.config['rsiWindowLen'])
-        roll_up1 = deltaUp.ewm(span=r.config['rsiWindowLen'],min_periods=0,adjust=True,ignore_na=True).mean()
-        roll_down1 = deltaDown.abs().ewm(span=r.config['rsiWindowLen'],min_periods=0,adjust=True,ignore_na=True).mean()
+#        roll_up1 = pandas.stats.moments.ewma(up, span=windowLen)
+#        roll_down1 = pandas.stats.moments.ewma(down.abs(), span=windowLen)
+        roll_up1 = deltaUp.ewm(span=windowLen,min_periods=0,adjust=True,ignore_na=True).mean()
+        roll_down1 = deltaDown.abs().ewm(span=windowLen,min_periods=0,adjust=True,ignore_na=True).mean()
         
         # Calculate the RSI based on EWMA
         RSI = roll_up1 / roll_down1
         return np.log(RSI)
     
+    newCols = []
     for df in dfs:
-        df.loc[:, 'RSI'] = CalcRSI(df['close'])
-        df.loc[:, 'RSI'] = df['RSI'].replace([np.inf, -np.inf, np.nan], [2, -2, 0])
+        for i, windowLen in enumerate(r.config['rsiWindowLens']):
+            col = f"rsi{i}_{windowLen}"
+            newCols.append(col)
+            df.loc[:, col] = CalcRSI(df['close'], windowLen)
+            df.loc[:, col] = df[col].replace([np.inf, -np.inf, np.nan], [2, -2, 0])
     
-    Normalise(dfs, ['RSI'])
+    ScaleData(dfs, newCols)
     
     return
 
 #==========================================================================
 def AddEma(r, dfs):
     """
-    ## Exponential Moving Average
+    ## Exponential Moving Average relative to price
     Add Exponential Moving Averages to the data frames
     """
+    newCols = []
     for df in dfs:
         for i, span in enumerate(r.config['emaLengths']):
             col = f'ema{i}_{span}'
+            newCols.append(col)
             df.loc[:,col] = df['close'].ewm(span=span,min_periods=0,adjust=True,ignore_na=False).mean() / df['close'] - 1
 
-    emaCols = [col for col in dfs[0].columns if 'ema' in col]
-    Normalise(dfs, emaCols)
+    ScaleData(dfs, newCols)
+    return
+
+#==========================================================================
+def AddDivergence(r, dfs):
+    """
+    ## Adds Divergence columns to the data frames
+    I define divergence as the price relative to the moving average of X points
+    """
+    newCols = []
+    for df in dfs:
+        for i, span in enumerate(r.config['dvgLengths']):
+            col = f'dvg{i}_{span}'
+            newCols.append(col)
+            df.loc[:,col] = df['close'] / df['close'].rolling(window=span, min_periods=0).mean() - 1
+
+    for col in newCols:
+        ScaleData(dfs, col)
+    return
+
+#==========================================================================
+def AddSpread(r, dfs):
+    """
+    ## Adds Spread column to each df
+    Spread = (high - low) / close
+    """
+    for df in dfs:
+        df.loc[:, 'spread'] = (df.loc[:, 'high'] - df.loc[:, 'low']) / df.loc[:, 'close']
+
+    ScaleData(dfs, ['spread'])
     return
 
 #==========================================================================
@@ -386,16 +453,21 @@ def AddLogDiff(r, dfs):
         col2 = np.log2(np.array(df['close']))
         df.loc[:,'logDiff'] = np.diff(col2, prepend=col2[0])
 
-    Normalise(dfs, ['logDiff'])
+    ScaleData(dfs, ['logDiff'])
     
     return
 
 #==============================================================================
-def ScaleLoadedData(dfs):
+def ScaleVolume(dfs):
+    # Normalise the volume
+    for df in dfs:
+        df.volume /= df.volume.quantile(0.9)
+
+#==============================================================================
+def PrepHighLowData(dfs):
     """
     dfs must be a list of DataFrames
-    Each DataFrame input should have 4 columns: close, high, low, volume
-    This functions prepares the data for entry into a neural network
+    Prepares high and low columns for entry into the neural network
     """
     
     ##22/10/2017: normalising each input sequence was shown to be best
@@ -409,15 +481,8 @@ def ScaleLoadedData(dfs):
         df.high = (df.high / df.close - 1)
         df.low = (df.low / df.close - 1)
     
-    # Normalisation per stock
-    for df in dfs:
-        # Normalise the close value
-        df.close /= df.close.quantile(0.9)
-        # Normalise the volume
-        df.volume /= df.volume.quantile(0.9)
-    
     # Normalisation high and low equally over all stocks
-    Normalise(dfs, ['high', 'low'])
+    ScaleData(dfs, ['high', 'low'])
            
     return
 
