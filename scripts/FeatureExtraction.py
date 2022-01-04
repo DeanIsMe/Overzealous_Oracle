@@ -15,6 +15,43 @@ from pandas.core.frame import DataFrame
 # There is one dataframe per ticker/coin
 
 #==========================================================================
+from IPython.display import Markdown, display
+def printmd(string, color=None):
+    if color is None:
+        display(Markdown(string))
+    else:
+        colorstr = "<span style='color:{}'>{}</span>".format(color, string)
+        display(Markdown(colorstr))
+
+#==========================================================================
+def PlotInData(r, dfs, sample=0, tRange=2000, columns=None):
+    """
+    Plots the input data for 1 sample (df)
+    sample is the index of the sample to plot
+    tRange Specifies the number of timesteps (or time range)) e.g. [2000, 4000]
+    columns specifies which features to plot. e.g. ['logDiff','ema1','ema2','ema3']
+    """
+    if type(tRange) == int:
+        tInd = np.array(range(r.timesteps))
+    else:
+        tInd = np.array(range(tRange[0], tRange[1]))   
+    x = tInd
+    fig, ax = plt.subplots(figsize=(r.config['plotWidth'], 4))
+    fig.tight_layout()
+    df = dfs[sample]
+    lines = []
+    if columns is None:
+        for i, col in enumerate(df.columns):
+            if not(col == 'filler' or col == 'time'):
+                columns.append(col)
+    for col in columns:
+        lines += ax.plot(x, df[col][tInd], label=col)
+    l0, = ax.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
+    ax.legend(handles = lines)
+    ax.set_title('Input Data for: {}'.format(r.coinList[sample]))
+    #fig.show()
+
+#==========================================================================
 def PlotOutData(r, prices, output, sample=0, tRange=0):
     # Plot output
     if type(tRange) == int:
@@ -34,27 +71,31 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
     ax2.legend(handles = lines)
     ax2.set_title('Output for: {}'.format(r.coinList[sample]))
     fig.show()
-    
+
 #==========================================================================
-def PlotInData(r, dfs, sample=0, tRange=0):
-    # Plot output
-    if type(tRange) == int:
-        tInd = np.array(range(r.timesteps))
-    else:
-        tInd = np.array(range(tRange[0], tRange[1]))   
-    x = tInd
-    fig, ax = plt.subplots(figsize=(r.config['plotWidth'], 4))
-    fig.tight_layout()
-    df = dfs[sample]
-    lines = []
-    for i, col in enumerate(df.columns):
-        if col == 'filler' or col == 'time':
-            continue
-        lines += ax.plot(x, df[col][tInd], label=col)
-    l0, = ax.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
-    ax.legend(handles = lines)
-    ax.set_title('Input Data for: {}'.format(r.coinList[sample]))
-    fig.show()
+def PrintInOutDataRanges(dfs, outData):
+    # Print a table. Each column is a feature, each row is a sample
+    quantiles = [0.90, 0.10]
+    values = []
+
+    for i, q in enumerate(quantiles):
+        series = []
+        for df in dfs:
+            # bool columns break quantile, so exclude them
+            ser = df.loc[:,df.dtypes != bool].quantile(q=q)
+            ser.name = df.name
+            series.append(ser)
+
+        dfq = pd.DataFrame(series)
+
+        outNums = np.transpose(np.percentile(outData, q*100., axis=1))
+        for i in range(outData.shape[-1]):
+            dfq[f'out_{i}'] = outNums[i]
+
+        dfq.name = q
+        values.append(dfq)
+        printmd(f'\nIn + Out data **{q:.2f} quantile**')
+        print(dfq)
 
 #==========================================================================
 def CalcFavScores(config, prices):
@@ -327,7 +368,7 @@ def AddEma(r, dfs):
     """
     for df in dfs:
         for i, span in enumerate(r.config['emaLengths']):
-            col = 'ema{}'.format(i+1)
+            col = f'ema{i}_{span}'
             df.loc[:,col] = df['close'].ewm(span=span,min_periods=0,adjust=True,ignore_na=False).mean() / df['close'] - 1
 
     emaCols = [col for col in dfs[0].columns if 'ema' in col]
@@ -379,3 +420,4 @@ def ScaleLoadedData(dfs):
     Normalise(dfs, ['high', 'low'])
            
     return
+

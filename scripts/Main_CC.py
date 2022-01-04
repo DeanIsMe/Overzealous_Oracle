@@ -55,29 +55,6 @@ def printmd(string, color=None):
         colorstr = "<span style='color:{}'>{}</span>".format(color, string)
         display(Markdown(colorstr))
 
-def PrintInOutDataRanges(dfs, outData):
-    # Print a table. Each column is a feature, each row is a sample
-    quantiles = [0.90, 0.10]
-    values = []
-
-    for i, q in enumerate(quantiles):
-        series = []
-        for df in dfs:
-            # bool columns break quantile, so exclude them
-            ser = df.loc[:,df.dtypes != bool].quantile(q=q)
-            ser.name = df.name
-            series.append(ser)
-
-        dfq = pd.DataFrame(series)
-
-        outNums = np.transpose(np.percentile(outData, q*100., axis=1))
-        for i in range(outData.shape[-1]):
-            dfq[f'out_{i}'] = outNums[i]
-
-        dfq.name = q
-        values.append(dfq)
-        printmd(f'\nIn + Out data **{q:.2f} quantile**')
-        print(dfq)
 
 tf.keras.backend.clear_session()
 
@@ -188,7 +165,7 @@ for loc in range(FeedLoc.LEN):
     print(f"Feed location '{FeedLoc.NAMES[loc]}': {list(dfs[0].columns[r.feedLocFeatures[loc]])}")
 
 # Print data ranges
-PrintInOutDataRanges(dfs, outData)
+FE.PrintInOutDataRanges(dfs, outData)
 
 FE.PlotOutData(r, prices, outData, 0)
 
