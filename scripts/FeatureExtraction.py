@@ -23,7 +23,7 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
         tInd = range(tRange[0], tRange[1])
     outDim = output.shape[-1]            
     x = tInd
-    fig = plt.figure(figsize=(12,10))
+    fig = plt.figure(figsize=(r.config['plotWidth'] ,10))
     fig.tight_layout()
     ax1 = plt.subplot(2,1,1)
     plt.plot(x,prices[sample, tInd])
@@ -45,7 +45,7 @@ def PlotInData(r, dfs, sample=0, tRange=0):
     else:
         tInd = np.array(range(tRange[0], tRange[1]))   
     x = tInd    
-    fig = plt.figure(figsize=(12,6))
+    fig = plt.figure(figsize=(r.config['plotWidth'], 6))
     fig.tight_layout()
     plt.title('Inputs Data for {}'.format(r.coinList[sample]))
     df = dfs[sample]

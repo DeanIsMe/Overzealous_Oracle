@@ -222,8 +222,6 @@ if single:
     #r.config['lstmWidths'] = [64]
     r.config['epochs'] = 8
     
-    # Scale the input and output data
-
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)
         NeuralNet.PrintNetwork(r)
@@ -290,7 +288,7 @@ if not single:
             dfs, inData, outData, prices = PrepData(r, dfs)
             
             NeuralNet.MakeAndTrainNetwork(r, inData, outData)
-            NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
+            #NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
             NeuralNet.TestNetwork(r, prices, inData, outData)
     
     print('\n\nBATCH RUN FINISHED!\n')
@@ -321,36 +319,41 @@ if not single:
 printmd('## Batch run DONE')
 
 
-
+# *****************************************************************************
 # %%
 # KERAS TUNER
 printmd("## Keras tuner")
 import keras_tuner as kt
 
 r.coinList = ['BTC', 'ETH']
-r.numHours = 24*365*5
-r.config['epochs'] = 8
+r.numHours = 24*365*3
+r.config['epochs'] = 32
 
 dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
 dfs, inData, outData, prices = PrepData(r, dfs)
 
 
 def build_model(hp):
-    r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
-    lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3)
-    r.config['lstmWidths'] = []
-    for i in range(lstmLayerCount):
-        r.config['lstmWidths'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=512, sampling='log'))
+    outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=72, sampling='log')
+    r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
+    # Changing model
+    # r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
+
+    # lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3)
+    # r.config['lstmWidths'] = []
+    # for i in range(lstmLayerCount):
+    #     r.config['lstmWidths'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=512, sampling='log'))
     
-    r.config['bottleneckWidth'] = hp.Int(f"bottleneckWidth", min_value=8, max_value=512, sampling='log')
+    # r.config['bottleneckWidth'] = hp.Int(f"bottleneckWidth", min_value=8, max_value=512, sampling='log')
+
     
     NeuralNet.MakeNetwork(r)
     return r.model
 
 tuner = kt.RandomSearch(
     hypermodel=build_model,
-    objective=kt.Objective("fitness", direction="max"),
-    max_trials=1,
+    objective=kt.Objective("val_score_abs", direction="max"),
+    max_trials=20,
     executions_per_trial=1, # number of attemps with the same settings
     overwrite=True,
     directory="keras_tuner",

@@ -41,13 +41,18 @@ class FitnessCb(tf.keras.callbacks.Callback):
         pass
     
     
-    def setup(self, inData, outTarget):
+    def setup(self, inData, outTarget, neutralTrainSqErr, neutralValSqErr, neutralTrainAbsErr, neutralValAbsErr):
         # inData covers all of the time steps of outData, PLUS some earlier time steps
         # these earlier timesteps are used for building state
         self.inData = inData # The input data that will be used for validation
         self.outTarget = np.array(outTarget) # The target output. A perfect prediction model would predict these values
         self.targetSize = outTarget.size # Number of points
         self.targetTimeSteps = outTarget.shape[-2]
+
+        self.neutralTrainAbsErr = neutralTrainAbsErr # train error if output was 'always neutral'
+        self.neutralTrainSqErr = neutralTrainSqErr # train error if output was 'always neutral'
+        self.neutralValAbsErr = neutralValAbsErr
+        self.neutralValSqErr = neutralValSqErr
         
         # Determine the thresholds for penalising lack of movement
         # This is to avoid uneventful results that don't do anything
@@ -97,6 +102,11 @@ class FitnessCb(tf.keras.callbacks.Callback):
         
         logs['fitness'] = fitness # for choosing the best model
         logs['penalty'] = penalty
+
+        logs['train_score_abs'] = self.neutralTrainAbsErr / logs['mean_absolute_error']
+        logs['val_score_abs'] = self.neutralValAbsErr / logs['val_mean_absolute_error']
+        logs['train_score_sq'] = self.neutralTrainSqErr / logs['mean_squared_error']
+        logs['val_score_sq'] = self.neutralValSqErr / logs['val_mean_squared_error']
 
 
 #==========================================================================
@@ -184,7 +194,8 @@ class PrintoutCb(tf.keras.callbacks.Callback):
 
         def PrintHeaders():
             # Headers for the text table printed during training
-            print(f"Epoch TrainErrSq ValErrSq Fitness ProcTime Remaining")
+            print(f"Epoch TrainAbsSc ValAbsSc Fitness ProcTime Remaining")
+
 
         # Epoch printout
         if logs['newBest'] or (epoch%10)==0 or now - self.prevPrintTime > 60. \
@@ -193,9 +204,9 @@ class PrintoutCb(tf.keras.callbacks.Callback):
                 PrintHeaders()
             #print(f"Epoch {epoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
                  #f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
-            print(f"{epoch:5}" +
-            f"{logs['loss']:10.3f} " +
-            f"{logs['val_mean_squared_error']:8.3f} " +
+            print(f"{epoch:5} " +
+            f"{logs['train_score_abs']:10.3f} " +
+            f"{logs['val_score_abs']:8.3f} " +
             f"{logs['fitness']:7.3f} " +
             #f"{logs['penalty']:7.3f} " +
             f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
@@ -396,9 +407,9 @@ def MakeNetwork(r):
     if r.config['optimiser'].lower() == 'adam':
         # beta_1 = exponential decay rate for 1st moment estimates. Default=0.9
         # beta_2 = exponential decay rate for 2nd moment estimates. Default=0.999
-        opt = optimizers.Adam(learning_rate=0.001, beta_1=0.9)
+        opt = optimizers.Adam(learning_rate=r.config['learningRate'], beta_1=0.9)
     else:
-        opt = r.config['optimiser']
+        opt = r.config['optimiser'].lower()
 
     feeds = [[] for i in range(FeedLoc.LEN)]
     
@@ -459,7 +470,6 @@ def MakeNetwork(r):
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error', 'mean_squared_error'])
     #r.model.build(input_shape=(None, r.inFeatureCount))
 
-    
     return
 
 #==========================================================================
@@ -476,18 +486,32 @@ def PrintNetwork(r):
 #==========================================================================
 def PrepTrainNetwork(r, inData, outData) -> dict :
         # Generate validation data
-    r.tInd = _CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentDays'])
+    r.tInd = _CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentSteps'])
     
     valI = r.tInd['val'] # Validation indices
     startPredict = max(0, valI[0]-r.config['evaluateBuildStatePoints']) # This number of time steps are used to build state before starting predictions
     valX = [arr[:, startPredict:valI[-1]+1, :] for arr in inData]
     valY = outData[:,valI,:]
 
+    if r.modelEpoch == -1:
+        print(f"\nStarting training. Max {r.config['epochs']} epochs")
+    else:
+        print(f"\nStarting training. At epoch {r.modelEpoch+1}. Max {r.config['epochs']} epochs. {r.config['epochs'] - r.modelEpoch -1} remaining.")
+
+    trainX = [arr[:,r.tInd['train'],:] for arr in inData]
+    trainY = outData[:, r.tInd['train']]
+    valY = outData[:, r.tInd['val']]
+    
+    r.neutralTrainAbsErr = np.sum(np.abs(trainY)) / trainY.size
+    r.neutralValAbsErr = np.sum(np.abs(valY)) / valY.size
+    r.neutralTrainSqErr = np.sum(np.abs(trainY)**2) / trainY.size
+    r.neutralValSqErr = np.sum(np.abs(valY)**2) / valY.size
+
     #Callbacks
     callbacks = []
 
     fitnessCb = FitnessCb()
-    fitnessCb.setup(valX, valY)
+    fitnessCb.setup(valX, valY, r.neutralTrainSqErr, r.neutralValSqErr, r.neutralTrainAbsErr, r.neutralValAbsErr)
     callbacks.append(fitnessCb)
 
     checkpointCb = CheckpointCb()
@@ -497,22 +521,6 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
     printoutCb = PrintoutCb()
     printoutCb.setup(r.config['epochs'])
     callbacks.append(printoutCb)
-
-
-    if r.modelEpoch == -1:
-        print(f"\nStarting training. Max {r.config['epochs']} epochs")
-    else:
-        print(f"\nStarting training. At epoch {r.modelEpoch+1}. Max {r.config['epochs']} epochs. {r.config['epochs'] - r.modelEpoch -1} remaining.")
-
-        
-    trainX = [arr[:,r.tInd['train'],:] for arr in inData]
-    trainY = outData[:, r.tInd['train']]
-    valY = outData[:, r.tInd['val']]
-    
-    r.neutralTrainAbsErr = np.sum(np.abs(trainY)) / trainY.size
-    r.neutralValAbsErr = np.sum(np.abs(valY)) / valY.size
-    r.neutralTrainSqErr = np.sum(np.abs(trainY)**2) / trainY.size
-    r.neutralValSqErr = np.sum(np.abs(valY)**2) / valY.size
 
     fitArgs = {
         'x':trainX,
@@ -685,7 +693,7 @@ def TestNetwork(r, priceData, inData, outData):
     def _PlotOutput(priceData, out, predict, tRange, sample):
         """Plot a single output feature of 1 sample"""
         plotsHigh = 1+r.outFeatureCount
-        fig, axs = plt.subplots(plotsHigh, 1, sharex=True, figsize=(12,3*plotsHigh))
+        fig, axs = plt.subplots(plotsHigh, 1, sharex=True, figsize=(r.config['plotWidth'],3*plotsHigh))
         fig.tight_layout()
         
         ax = axs[0]

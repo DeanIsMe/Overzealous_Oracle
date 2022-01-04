@@ -13,14 +13,14 @@ def GetConfig():
     
     # Favourability Score: CompareToFutureData
     # How many days to exclude from training because the 'to buy' score is not well defined
-    config['excludeRecentDays'] = 30 # Tradeoff between how recent, and accuracy to 'to Buy' score
+    config['excludeRecentSteps'] = 30 # Tradeoff between how recent, and accuracy to 'to Buy' score
     
 #    config['outputRanges'] = [[1,5], [6,25], [26,125]] # The ranges over which to calculate output scores
     config['outputRanges'] = [[1,100]]
     # Also defines the number of output periods
     # About 246 trading days per year
     
-    # When the date is within 'excludeRecentDays' of the end of the data, then
+    # When the date is within 'excludeRecentSteps' of the end of the data, then
     # the 'favourability' score cannot be completely calculated.
     # When pullUncertainYTo0 is true, the favourability score will be pulled
     # more towards zero as the more and more dates are missing. When it's

@@ -10,7 +10,8 @@ def GetConfig():
     config = dict()
     
     # ****************************
-    # INPUT DATA
+    # INPUT DATA / FEATURES
+
     # Volatility
     config['vixNumPastRanges'] = 3 # number of ranges to use
     config['vixMaxPeriodPast'] = 24*14
@@ -26,18 +27,17 @@ def GetConfig():
     # ****************************
     # OUTPUT (TARGET) DATA
 
-    # Favourability Score: CompareToFutureData
-    # How many days to exclude from training because the 'to buy' score is not well defined
-    config['excludeRecentDays'] = 50 # Tradeoff between how recent, and accuracy to 'to Buy' score
-    
-    
     # config['outputRanges'] = [[1,5], [6,25], [26,125]] # The ranges over which to calculate output scores
     # Starts at 1
     # I'm using hourly data
     config['outputRanges'] = [[26,125]]
     # Also defines the number of output periods
+
+    # Favourability Score: CompareToFutureData
+    # How many days to exclude from training because the 'to buy' score is not well defined
+    config['excludeRecentSteps'] = 50 # Tradeoff between how recent, and accuracy to 'to Buy' score
     
-    # When the date is within 'excludeRecentDays' of the end of the data, then
+    # When the date is within 'excludeRecentSteps' of the end of the data, then
     # the 'favourability' score cannot be completely calculated.
     # When pullUncertainYTo0 is true, the favourability score will be pulled
     # more towards zero as the more and more dates are missing. When it's
@@ -116,7 +116,6 @@ def GetConfig():
 
     config['epochs'] = 8 # Number of complete passes of the data (subject to early stopping)
     
-
     config['dropout'] = 0.1 # Dropout_rate of layer applied before each LSTM or Conv1D. Set to 0 to disable
 
     # After training, change the weights to the model that had the best 
@@ -129,5 +128,12 @@ def GetConfig():
     # Optimizer
     config['optimiser'] = 'adam'
 
+    config['learningRate'] = 0.002 # initial
+
+
+    # ****************************
+    # OTHER
+
+    config['plotWidth'] = 9
 
     return config

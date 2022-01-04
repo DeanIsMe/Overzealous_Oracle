@@ -55,14 +55,14 @@ class ModelResult():
         self.trainAbsErr = None
         self.neutralTrainAbsErr = None # train error if output was 'always neutral'
         self.neutralTrainSqErr = None # train error if output was 'always neutral'
+        self.neutralValAbsErr = None
+        self.neutralValSqErr = None
         self.trainScore = None # neutralTrainAbsErr / trainAbsErr
+        self.testScore = None # neutralTestAbsErr / testAbsErr
+
         self.modelEpoch = -1 # The most recent epoch trained for the current model weights.
         # epochs are 0-numbered, so total epochs trained is modelEpoch+1
         
-        self.neutralValAbsErr = None
-        self.neutralValSqErr = None
-        
         self.testAbsErr = None
         self.neutralTestAbsErr = None # test error if output was 'always neutral'
-        self.testScore = None # neutralTestAbsErr / testAbsErr
         
