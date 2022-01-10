@@ -151,11 +151,11 @@ def CalcFavScores(config, prices):
 #==============================================================================
 def TranslateVector(input, translation, padding=0):
     """
-    # Translate a vector to the left (neg) or right (pos)
-    # Padding is a single value, that the vector will be padded with
-    # Set padding==-2 to use the closest value
-    # Output has same length as input (some padding values added, some removed)
-    # Returns (output, valid)
+    Translate a vector to the left (neg) or right (pos)
+    Padding is a single value, that the vector will be padded with
+    Set padding==-2 to use the closest value
+    Output has same length as input (some padding values added, some removed)
+    Returns (output, valid)
     """
     if (padding == -2):
         # Use the closest value as the padding
@@ -306,7 +306,28 @@ def AddVix(r, dfs, prices):
     # Scale all by the same amount
     vixCols = [col for col in dfs[0].columns if 'vix' in col]
     ScaleData(dfs, vixCols)
-            
+
+#==========================================================================
+def MakeExpSpacedPeriods(numPeriods, maxDaysPast, firstPeriodLen, nonlinearity=3):
+    """Makes a set of non-overlapping periods over some index range. The lengths
+    of the periods will be increasing exponentially.
+
+    Args:
+        numPeriods (int): [description]
+        maxDaysPast (int): [description]
+        firstPeriodLen (int): [description]
+        nonlinearity (int, optional): [description]. Defaults to 3.
+
+    Returns:
+        [type]: [description]
+    """
+    seeds = np.linspace(0,1,numPeriods)
+    b = nonlinearity # in y = a*exp(b*x) + c. Affects linearity. 4 is good. Lower: more linear
+    a = (maxDaysPast-firstPeriodLen) / (np.exp(b)-1)
+    c = firstPeriodLen-a
+    periodStartsB4Today = np.round(a*np.exp(seeds*b)+c).astype(int)
+    periodLengths = np.concatenate(([firstPeriodLen], np.diff(periodStartsB4Today))).astype(int)       
+    return periodStartsB4Today, periodLengths
             
 #==========================================================================
 def CalcVolatility(config, prices):
@@ -326,12 +347,17 @@ def CalcVolatility(config, prices):
     numPeriods = config['vixNumPastRanges']
     maxDaysPast = config['vixMaxPeriodPast']
     firstPeriodLen = 5
-    seeds = np.linspace(0,1,numPeriods)
-    b = 3 # in y = a*exp(b*x) + c. Affects linearity. 4 is good. Lower: more linear
-    a = (maxDaysPast-firstPeriodLen) / (np.exp(b)-1)
-    c = firstPeriodLen-a
-    periodStartsB4Today = np.round(a*np.exp(seeds*b)+c).astype(int)
-    periodLengths = np.concatenate(([firstPeriodLen], np.diff(periodStartsB4Today))).astype(int)
+
+    # Legacy periods (as of 2022-01-10)
+    # periodStartsB4Today, periodLengths = MakeExpSpacedPeriods(numPeriods, maxDaysPast, firstPeriodLen)
+    # # Make all periods extend up to the present time
+    # # This means the periods overlap
+    # # A field that says 'what was the vix 10-14 hours ago' is probably less useful than a field 'what was the vix 0-14 hours ago'
+    # for i in range(numPeriods):
+    #     periodLengths[i] = periodStartsB4Today[i]
+    
+    periodStartsB4Today = np.geomspace(firstPeriodLen, maxDaysPast, numPeriods, dtype=int)
+    periodLengths = periodStartsB4Today
     
     # Volatility
     # Diferences in the log2 domain are ratios, so the result is scale-agnostic (no further normalisation needed)
