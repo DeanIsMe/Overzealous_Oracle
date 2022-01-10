@@ -2,6 +2,7 @@
 # Cryptocurrency configuration
 
 from DataTypes import FeedLoc
+import numpy as np
 
 #==============================================================================
 # GetConfig
@@ -23,7 +24,7 @@ def GetConfig():
     config['emaLengths'] = [] # The span of the EMAs
 
     # I define divergence as the price relative to the moving average of X points
-    config['dvgLengths'] = [24, 168, 400]
+    config['dvgLengths'] = np.geomspace(start=10, stop=365, num=5, dtype=int)
 
 
 
@@ -33,7 +34,7 @@ def GetConfig():
     # config['outputRanges'] = [[1,5], [6,25], [26,125]] # The ranges over which to calculate output scores
     # Starts at 1
     # I'm using hourly data
-    config['outputRanges'] = [[26,125]]
+    config['outputRanges'] = [[1,5], [6,25], [26,125]]
     # Also defines the number of output periods
 
     # Favourability Score: CompareToFutureData

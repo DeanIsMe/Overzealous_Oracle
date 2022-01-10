@@ -315,10 +315,11 @@ dfs, inData, outData, prices = PrepData(r, dfs)
 
 
 def build_model(hp):
-    outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=72, sampling='log')
-    r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
+    #outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=72, sampling='log')
+    #r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
+
     # Changing model
-    # r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
+    r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
 
     # lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3)
     # r.config['lstmWidths'] = []
@@ -333,8 +334,8 @@ def build_model(hp):
 
 tuner = kt.RandomSearch(
     hypermodel=build_model,
-    objective=kt.Objective("val_score_abs", direction="max"),
     max_trials=20,
+    objective=kt.Objective("val_mean_squared_error", direction="min"),
     executions_per_trial=1, # number of attemps with the same settings
     overwrite=True,
     directory="keras_tuner",

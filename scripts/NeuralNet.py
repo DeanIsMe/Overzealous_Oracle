@@ -399,6 +399,15 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
 
     return this_layer
 
+#==========================================================================
+def mean_squared_error_any(y_true, y_pred):
+    """Custom keras metric function
+    Chooses the output feature that performed the best, and returns the 
+    mean squared error for that (ignoring other output features)
+    """
+    se = tf.square(tf.subtract(y_pred, y_true))
+    mse = tf.reduce_mean(se, axis=-2) # Average across timesteps
+    return tf.reduce_min(mse, axis=-1) 
 
 #==========================================================================
 def MakeNetwork(r):
@@ -469,7 +478,7 @@ def MakeNetwork(r):
     r.trainHistory = {}
 
     # mape = mean absolute percentage error
-    r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error', 'mean_squared_error'])
+    r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error', 'mean_squared_error', mean_squared_error_any])
     #r.model.build(input_shape=(None, r.inFeatureCount))
 
     return
@@ -714,7 +723,7 @@ def TestNetwork(r, priceData, inData, outData):
             l4, = ax.plot([r.tInd['train'][-1], r.tInd['train'][-1]], [np.min(outPlot), np.max(outPlot)], label='TrainEnd')
             l0, = ax.plot([tRange[0], tRange[-1]], [0, 0])
             ax.set_title('Output Feature {} ({}-{}steps)'.format(feature, r.config['outputRanges'][feature][0], r.config['outputRanges'][feature][1]))
-            ax.legend(handles = [l1, l2, l3 , l4])
+            ax.legend(handles = [l1, l2, l3, l4])
         # Save file if necessary
         if r.isBatch and sample == 0:
             try:
