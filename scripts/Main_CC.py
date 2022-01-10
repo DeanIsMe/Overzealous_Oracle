@@ -159,7 +159,6 @@ def PrepData(r:ModelResult, dfs:list):
 dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
 dfs, inData, outData, prices = PrepData(r, dfs)
 
-
 # Plot a small sample of the input data
 FE.PlotInData(r, dfs, 0, [5000, 10000])
 
@@ -194,14 +193,14 @@ prunedNetwork = False # Pruned: generate multiple candidates and use the best
 
 single = True
 if single:
-# *****************************************************************************
+# ************************
 # Single Run
     r.isBatch = False
     r.batchRunName = ''
     
     # !@#$
     #r.config['lstmWidths'] = [64]
-    r.config['epochs'] = 32
+    r.config['epochs'] = 8
     
     if not prunedNetwork:
         NeuralNet.MakeNetwork(r)
@@ -217,7 +216,7 @@ else:
     print('Run next cell for batch...')
     
 
-#%%
+ #%%
 # TRAIN BATCH
 if not single:
     # *****************************************************************************
@@ -260,7 +259,7 @@ if not single:
             print(r.batchRunName)
              
             r.config['earlyStopping'] = 20
-            # *********************************************************************
+            # *****************************
             # Change for this batch
             r.config['inScale'] = val1
             r.config['outScale'] = val2
@@ -308,7 +307,7 @@ import keras_tuner as kt
 
 r.coinList = ['BTC', 'ETH']
 r.numHours = 24*365*3
-r.config['epochs'] = 32
+r.config['epochs'] = 8
 
 dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
 dfs, inData, outData, prices = PrepData(r, dfs)
@@ -334,9 +333,9 @@ def build_model(hp):
 
 tuner = kt.RandomSearch(
     hypermodel=build_model,
-    max_trials=20,
-    objective=kt.Objective("val_mean_squared_error", direction="min"),
-    executions_per_trial=1, # number of attemps with the same settings
+    objective=kt.Objective("val_score_sq_any", direction="max"),
+    max_trials=5,
+    executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
     directory="keras_tuner",
     project_name="fortune_test",
@@ -356,6 +355,13 @@ print(f'Tuning Time (h:m:s)= {NeuralNet.SecToHMS(r.trainTime)}.  {r.trainTime:.1
 tuner.results_summary()
 
 # %%
-import tensorflow.keras as tfk
-tfk.Model
-tfk.Model.fit
+if 1:
+    print('Reloading NeuralNet')
+    import importlib
+    importlib.reload(NeuralNet)
+    
+
+r.config['epochs'] = 8
+NeuralNet.MakeNetwork(r)
+NeuralNet.TrainNetwork(r, inData, outData)
+ # %%

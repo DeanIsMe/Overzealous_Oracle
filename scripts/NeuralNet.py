@@ -410,6 +410,27 @@ def mean_squared_error_any(y_true, y_pred):
     return tf.reduce_min(mse, axis=-1) 
 
 #==========================================================================
+def score_sq_any(y_true, y_pred):
+    """Custom keras metric function
+    Chooses the output feature that performed the best, and returns the 
+    score for that (ignoring other output features)
+    Note that this is somewhat inefficient because it recalculates the
+    neutral squared error each time.
+    I COULD calculate the neutral score once and save it, then assume it will be the same for future calls.
+    """
+    seNeutral = tf.square(y_true)
+    seNeutral = tf.reduce_mean(seNeutral, axis=-2) # Average across timesteps
+    seNeutral = tf.reduce_mean(seNeutral, axis=0) # Average across samples
+
+    se = tf.square(tf.subtract(y_pred, y_true))
+    se = tf.reduce_mean(se, axis=-2) # Average across timesteps
+    se = tf.reduce_mean(se, axis=0) # Average across samples
+
+    # Calculate the score for each
+    scores = tf.divide(seNeutral, se)
+    return tf.reduce_max(scores, axis=-1) # Choose the best score from the different output features
+
+#==========================================================================
 def MakeNetwork(r):
     # Prep convolution config
     convCfg = PrepConvConfig(r.config)
@@ -478,7 +499,8 @@ def MakeNetwork(r):
     r.trainHistory = {}
 
     # mape = mean absolute percentage error
-    r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error', 'mean_squared_error', mean_squared_error_any])
+    r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error', 'mean_squared_error', \
+        score_sq_any])
     #r.model.build(input_shape=(None, r.inFeatureCount))
 
     return
@@ -513,6 +535,7 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
     trainY = outData[:, r.tInd['train']]
     valY = outData[:, r.tInd['val']]
     
+
     r.neutralTrainAbsErr = np.sum(np.abs(trainY)) / trainY.size
     r.neutralValAbsErr = np.sum(np.abs(valY)) / valY.size
     r.neutralTrainSqErr = np.sum(np.abs(trainY)**2) / trainY.size

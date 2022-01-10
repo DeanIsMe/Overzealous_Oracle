@@ -38,7 +38,7 @@ def GetConfig():
     # Also defines the number of output periods
 
     # Favourability Score: CompareToFutureData
-    # How many days to exclude from training because the 'to buy' score is not well defined
+    # How many steps to exclude from training because the 'to buy' score is not well defined
     config['excludeRecentSteps'] = 50 # Tradeoff between how recent, and accuracy to 'to Buy' score
     
     # When the date is within 'excludeRecentSteps' of the end of the data, then
