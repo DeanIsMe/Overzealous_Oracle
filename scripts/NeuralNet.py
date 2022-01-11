@@ -293,6 +293,7 @@ def PlotTrainMetrics(r, axIn=None, plotAbs=True, legend=True):
     if legend:
         ax.legend(handles = handles)
 #    ax.set_yscale('log')
+    ax.grid()
     
     if axIn is None:
         ax.set_title('Training Scores (1=neutral, >1:better)')
@@ -481,7 +482,7 @@ def MakeNetwork(r):
     if feed_lens[FeedLoc.dense] > 0:
         this_layer = layers.concatenate([this_layer, feeds[FeedLoc.dense]])
 
-    # Dense layer
+    # Output (dense) layer
     main_output = layers.Dense(units=r.outFeatureCount, activation='linear', name='final_output')(this_layer)
     
     r.model = CustomModel(inputs=feeds, outputs=[main_output])
@@ -678,7 +679,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 
     scores['trainGrad'] = np.clip(-(trainGradSum / np.abs(trainGradSum.min())), -1, 1)
     scores['valGrad'] = np.clip(-(valGradSum / np.abs(valGradSum.min())), -1, 1)
 
-    print('\n**********************************************************************************')
+    print('************************************')
     printmd('### All candidate model scores:')
 
     # Weight each of the scores
@@ -691,6 +692,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 
               
     bestI = scores['total'].argmax()
     printmd('**Chose candidate model: {}**'.format(bestI))
+    printmd('**********************************************************************************')
     
     # Train on the best model
     r.config['epochs'] = epochBackup
@@ -720,6 +722,7 @@ def TestNetwork(r, priceData, inData, outData, drawPlots=True):
         ax.figure = fig # required to avoid an exception
         ax.semilogy(tRange, priceData[sample, tRange]) # Daily data
         ax.set_title('Prices. Sample {} ({}) [{}]'.format(r.coinList[sample], sample, r.batchRunName))
+        ax.grid()
         
         for feature in range(r.outFeatureCount):
             ax = axs[1+feature]
@@ -733,6 +736,7 @@ def TestNetwork(r, priceData, inData, outData, drawPlots=True):
             l0, = ax.plot([tRange[0], tRange[-1]], [0, 0])
             ax.set_title('Output Feature {} ({}-{}steps)'.format(feature, r.config['outputRanges'][feature][0], r.config['outputRanges'][feature][1]))
             ax.legend(handles = [l1, l2, l3, l4])
+            ax.grid()
         # Save file if necessary
         if r.isBatch and sample == 0:
             try:

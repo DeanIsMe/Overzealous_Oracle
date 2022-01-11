@@ -51,7 +51,7 @@ from DataTypes import FeedLoc, printmd
 tf.keras.backend.clear_session()
 
 # to force CPU compute:
-if 0:
+if 1:
     printmd("**USING ONLY CPU**")
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
@@ -165,6 +165,7 @@ printmd('### Imports & data setup DONE')
 # ****************************************************************************************************************
 # %% 
 # TRAIN SINGLE
+
 #          d8b                   888          
 #          Y8P                   888          
 #                                888          
@@ -187,7 +188,7 @@ if 1:
     import importlib
     importlib.reload(NeuralNet)
 
-
+printmd("## Start single train")
 r = ModelResult()
 r.config = GetConfig()
 
@@ -202,9 +203,9 @@ dfs, inData, outData, prices = PrepData(r, dfs)
 r.isBatch = False
 r.batchRunName = ''
 
-r.config['epochs'] = 8
+r.config['epochs'] = 64
 
-prunedNetwork = False # Pruned: generate multiple candidates and use the best
+prunedNetwork = True # Pruned: generate multiple candidates and use the best
 if not prunedNetwork:
     NeuralNet.MakeNetwork(r)
     NeuralNet.PrintNetwork(r)
@@ -258,7 +259,7 @@ bat2Len = len(bat2Val)
 
 results = [0]*bat2Len
 r.isBatch = True
-r.batchName = datetime.now().strftime('%Y-%m-%d_%h_') + '_' + bat1Name + '_' + bat2Name
+r.batchName = datetime.now().strftime('%Y-%m-%d_%H%M_') + '_' + bat1Name + '_' + bat2Name
 startR = r
 
 printmd('# Batch run START')
