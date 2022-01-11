@@ -293,7 +293,7 @@ def PlotTrainMetrics(r, axIn=None, plotAbs=True, legend=True):
     if legend:
         ax.legend(handles = handles)
 #    ax.set_yscale('log')
-    ax.grid()
+    ax.grid(True)
     
     if axIn is None:
         ax.set_title('Training Scores (1=neutral, >1:better)')
@@ -515,7 +515,7 @@ def PrintNetwork(r):
 
 #==========================================================================
 def PrepTrainNetwork(r, inData, outData) -> dict :
-        # Generate validation data
+    # Generate validation data
     r.tInd = _CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentSteps'])
 
     verbose = 1 if r.isBatch else 2

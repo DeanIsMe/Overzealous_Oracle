@@ -94,6 +94,8 @@ def PrepData(r:ModelResult, dfs:list):
 
     # INPUT DATA
     # inData has 3 separate arrays for 3 separate feed locations
+    # feedLocFeatures is a list of 3 boolean arrays. 
+    # Has a bool entry for every column in dfs
     inData = [[] for i in range(FeedLoc.LEN)]
     feedLocFeatures = [[] for i in range(FeedLoc.LEN)]
 
@@ -193,7 +195,7 @@ r = ModelResult()
 r.config = GetConfig()
 
 r.coinList = ['BTC']
-r.numHours = 24*365*5
+r.numHours = 24*365*3
 
 dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
 dfs, inData, outData, prices = PrepData(r, dfs)
@@ -388,7 +390,6 @@ for idx1 in range(bat1Len):
         
         ax.set_title(f'{bat2Name}:{bat2Val[idx2]}, {bat1Name}:{bat1Val[idx1]}', fontdict={'fontsize':10})
         #ax.set_yscale('log')
-        ax.grid()
         
 
 maxY = round(maxY+0.05, 1)
@@ -424,6 +425,7 @@ def DrawPlot(valA, valB, nameA, nameB, data, nameY):
     ax.set_ylabel(nameY)
     ax.set_title('{} vs {} (Legend = {})'.format(nameY, nameA, nameB))
     ax.legend(valB)
+    ax.grid(True)
     plt.show()
 
 # Test Score vs bat1Val
@@ -476,34 +478,85 @@ import keras_tuner as kt
 r = ModelResult()
 r.config = GetConfig() 
 r.coinList = ['BTC', 'ETH']
-r.numHours = 24*365*3
-r.config['epochs'] = 64
+r.numHours = 24*365*1
+r.config['epochs'] = 32
 
-dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
-dfs, inData, outData, prices = PrepData(r, dfs)
+class MyHyperModel(kt.HyperModel):
+    """[summary]
+    Default class is in:
+    venv\Lib\site-packages\keras_tuner\engine\hypermodel.py
+
+    Args:
+        kt ([type]): [description]
+    """
+    def build(self, hp):
+        outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=144, sampling='log')
+        r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
+
+        # Output scaling
+        # outliers = hp.Float("outliers", -0.3, 3.)
+        # if outliers < 0.:
+        #     r.config['binarise'] = 0
+        #     r.config['ternarise'] = 0
+        # elif outliers < 1.:
+        #     r.config['binarise'] = outliers
+        #     r.config['ternarise'] = 0
+        # else:
+        #     r.config['binarise'] = 0
+        #     r.config['ternarise'] = (outliers - 1.) * 2.5
+        #     r.config['selectivity'] = hp.Float("selectivity", 1., 3.)
+
+        # Changing model
+        #r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
+
+        # lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3)
+        # r.config['lstmWidths'] = []
+        # for i in range(lstmLayerCount):
+        #     r.config['lstmWidths'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=512, sampling='log'))
+        
+        # r.config['bottleneckWidth'] = hp.Int(f"bottleneckWidth", min_value=8, max_value=512, sampling='log')
+
+        dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
+        self.dfs, self.inData, self.outData, self.prices = PrepData(r, dfs)
+        NeuralNet.MakeNetwork(r)
+        return r.model
+
+    def fit(self, hp, model, *args, **kwargs):
+        """Train the model.
+
+        Args:
+            hp: HyperParameters.
+            model: `keras.Model` built in the `build()` function.
+            **kwargs: All arguments passed to `Tuner.search()` are in the
+                `kwargs` here. It always contains a `callbacks` argument, which
+                is a list of default Keras callback functions for model
+                checkpointing, tensorboard configuration, and other tuning
+                utilities. If `callbacks` is passed by the user from
+                `Tuner.search()`, these default callbacks will be appended to
+                the user provided list.
+
+        Returns:
+            A `History` object, which is the return value of `model.fit()`, a
+            dictionary, or a float.
+
+            If return a dictionary, it should be a dictionary of the metrics to
+            track. The keys are the metric names, which contains the
+            `objective` name. The values should be the metric values.
+
+            If return a float, it should be the `objective` value.
+        """
+        #r=kwargs['r']
+        #dataLoader=kwargs['dataLoader']
+        fitArgs, checkpointCb, printoutCb = NeuralNet.PrepTrainNetwork(r, self.inData, self.outData)
+        fitArgs['verbose'] = 0
+        return model.fit(**fitArgs)
 
 
-def build_model(hp):
-    outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=144, sampling='log')
-    r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
-
-    # Changing model
-    #r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
-
-    # lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3)
-    # r.config['lstmWidths'] = []
-    # for i in range(lstmLayerCount):
-    #     r.config['lstmWidths'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=512, sampling='log'))
-    
-    # r.config['bottleneckWidth'] = hp.Int(f"bottleneckWidth", min_value=8, max_value=512, sampling='log')
-
-    
-    NeuralNet.MakeNetwork(r)
-    return r.model
+hyperModel = MyHyperModel()
 
 tuner = kt.RandomSearch(
-    hypermodel=build_model,
-    objective=kt.Objective("val_score_sq_any", direction="max"),
+    hypermodel=hyperModel,
+    objective=kt.Objective("val_score_sq_any", direction="max"), # CHANGE BACK TO VALIDATION
     max_trials=10,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
@@ -513,20 +566,17 @@ tuner = kt.RandomSearch(
 
 tuner.search_space_summary()
 
-fitArgs, checkpointCb, printoutCb = NeuralNet.PrepTrainNetwork(r, inData, outData)
-
-fitArgs['verbose'] = 1
-
-# Start
+# SEARCH
 start = time.time()
-tuner.search(**fitArgs)
+tuner.search()
 end = time.time()
 r.trainTime = end-start
 print(f'Tuning Time (h:m:s)= {SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
+printmd("## keras tuner done")
 
 #tuner.results_summary(). # This is very poorly formatted
 
-#%%
+# PRINT RESULTS
 # Keras tuner results into pandas
 trials = tuner.oracle.get_best_trials(9999)
 dfData = [copy.deepcopy(t.hyperparameters.values) for t in trials]
@@ -549,7 +599,9 @@ fig.tight_layout()
 for ax, hpName in zip(axs, hpNames):
     ax.plot(df[hpName], df['score'], 'x', label=hpName)
     #ax.set_title(hpName)
-    ax.legend(labels=[hpName], loc='lower right')
+    ax.set_title(hpName, fontdict={'fontsize':10})
     ax.grid()
 plt.show()
 
+
+# %%

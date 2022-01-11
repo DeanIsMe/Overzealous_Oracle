@@ -74,15 +74,15 @@ def GetConfig():
     # ****************************
     # NEURAL NET (MODEL)
 
-    config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM to reduce the LSTM size
-    config['lstmWidths'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
+    config['bottleneckWidth'] = 64 # A dense layer is added before the LSTM to reduce the LSTM size
+    config['lstmWidths'] = [64] # Number of neurons in each LSTM layer. They're cascaded.
     # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
     # The num of conv layers will be the greatest number of valid layers
     # If any parameter is empty ([] or 0), then there will be no convolutional layers
     config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
     config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
     config['convKernelSz'] = 10 # Kernel size per filter
-    config['denseWidths'] = [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
+    config['denseWidths'] = [] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
 
 
 
