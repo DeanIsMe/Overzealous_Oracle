@@ -66,3 +66,11 @@ class ModelResult():
         self.testAbsErr = None
         self.neutralTestAbsErr = None # test error if output was 'always neutral'
         
+        
+from IPython.display import Markdown, display
+def printmd(string, color=None):
+    if color is None:
+        display(Markdown(string))
+    else:
+        colorstr = "<span style='color:{}'>{}</span>".format(color, string)
+        display(Markdown(colorstr))

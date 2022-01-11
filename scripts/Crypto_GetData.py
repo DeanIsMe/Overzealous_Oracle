@@ -13,13 +13,7 @@ import pickle
 
 from private_keys import cryptowatch_public
 
-from IPython.display import Markdown, display
-def printmd(string, color=None):
-    if color is None:
-        display(Markdown(string))
-    else:
-        colorstr = "<span style='color:{}'>{}</span>".format(color, string)
-        display(Markdown(colorstr))
+from DataTypes import printmd
 
 #*******************************************************************************
 class DataLoader:

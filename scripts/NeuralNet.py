@@ -19,14 +19,7 @@ import os
 #from ClockworkRNN import CWRNN
 
 from scripts.DataTypes import FeedLoc
-
-from IPython.display import Markdown, display
-def printmd(string, color=None):
-    if color is None:
-        display(Markdown(string))
-    else:
-        colorstr = "<span style='color:{}'>{}</span>".format(color, string)
-        display(Markdown(colorstr))
+from DataTypes import printmd
 
 def SecToHMS(t):
     """Makes a string like ' 2:15:36' to represent some duration, given in seconds. 8 chars"""
@@ -520,6 +513,8 @@ def PrintNetwork(r):
 def PrepTrainNetwork(r, inData, outData) -> dict :
         # Generate validation data
     r.tInd = _CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentSteps'])
+
+    verbose = 1 if r.isBatch else 2
     
     valI = r.tInd['val'] # Validation indices
     startPredict = max(0, valI[0]-r.config['evaluateBuildStatePoints']) # This number of time steps are used to build state before starting predictions
@@ -554,7 +549,8 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
 
     printoutCb = PrintoutCb()
     printoutCb.setup(r.config['epochs'])
-    callbacks.append(printoutCb)
+    if verbose >= 2:
+        callbacks.append(printoutCb)
 
     fitArgs = {
         'x':trainX,
@@ -614,7 +610,8 @@ def TrainNetwork(r, inData, outData, final=True, plotMetrics=True):
             # Note that r.trainHistory history for the full training
             r.modelEpoch = checkpointCb.bestEpoch
     
-    PlotTrainMetrics(r)
+    if plotMetrics:
+        PlotTrainMetrics(r)
 
     return
 
@@ -685,23 +682,17 @@ def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 
     scores['valGrad'] = np.clip(-(valGradSum / np.abs(valGradSum.min())), -1, 1)
 
     print('\n**********************************************************************************')
-    print('**********************************************************************************')
-    print('**********************************************************************************')
-    print('### All candidate model scores:')
-    print(scores)
-    
+    printmd('### All candidate model scores:')
+
     # Weight each of the scores
-    scores['train'] *= 1
-    scores['val'] *= 2
-    scores['trainGrad'] *= 0.5
-    scores['valGrad'] *= 0.5
+    scores['total'] = scores['train'] * 1 \
+        + scores['val'] * 2 \
+        + scores['trainGrad'] * 0.5 \
+        + scores['valGrad'] * 0.5
     
-    totalScore = scores.sum(axis=1)
+    print(scores)
               
-    bestI = totalScore.argmax()
-     
-    print('Total:')
-    print(totalScore)
+    bestI = scores['total'].argmax()
     printmd('**Chose candidate model: {}**'.format(bestI))
     
     # Train on the best model

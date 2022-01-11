@@ -13,16 +13,9 @@ from pandas.core.frame import DataFrame
 # dfs: dataframes
 # There is one dataframe per ticker/coin
 
-#==========================================================================
-from IPython.display import Markdown, display
 
+from DataTypes import printmd
 from scripts.DataTypes import FeedLoc
-def printmd(string, color=None):
-    if color is None:
-        display(Markdown(string))
-    else:
-        colorstr = "<span style='color:{}'>{}</span>".format(color, string)
-        display(Markdown(colorstr))
 
 #==========================================================================
 def PlotInData(r, dfs, sample=0, tRange=2000, colPatterns=[]):
