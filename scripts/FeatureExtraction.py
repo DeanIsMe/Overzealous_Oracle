@@ -117,7 +117,6 @@ def CalcFavScores(config, prices):
     The number of periods is defined by the length of config['outputRanges']
     Can use this to output short, medium and long term scores
     """
-    print('CalcFavScores Start')
     # If it's just a single row, add an extra dimension
     if (prices.ndim != 2):
         prices = prices.reshape(1,prices.shape[-1])

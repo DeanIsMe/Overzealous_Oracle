@@ -51,7 +51,7 @@ from DataTypes import FeedLoc, printmd
 tf.keras.backend.clear_session()
 
 # to force CPU compute:
-if 1:
+if 0:
     printmd("**USING ONLY CPU**")
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
@@ -203,9 +203,9 @@ dfs, inData, outData, prices = PrepData(r, dfs)
 r.isBatch = False
 r.batchRunName = ''
 
-r.config['epochs'] = 64
+r.config['epochs'] = 8
 
-prunedNetwork = True # Pruned: generate multiple candidates and use the best
+prunedNetwork = False # Pruned: generate multiple candidates and use the best
 if not prunedNetwork:
     NeuralNet.MakeNetwork(r)
     NeuralNet.PrintNetwork(r)
@@ -240,14 +240,14 @@ printmd('### Make & train DONE')
 r = ModelResult()
 r.config = GetConfig() 
 r.coinList = ['BTC']
-r.numHours = 24*365*1
+r.numHours = 24*365*5
 
-r.config['epochs'] = 8
+r.config['epochs'] = 64
 
 # Batch changes
 # Val1: rows. Val2: columns
-bat1Name = 'Dropout'
-bat1Val = [0., 0.1]
+bat1Name = 'Network'
+bat1Val = ['conv', 'lstm', 'dense']
 
 bat2Name = 'Trial'
 bat2Val = [1,2,3]
@@ -277,7 +277,7 @@ for idx2, val2 in enumerate(bat2Val):
         
         printmd(f'### BATCH RUN ({idx2}, {idx1}). Trial {trialCount} / {totalTrials}')
         r.batchRunName = f'{bat2Name}:{val2}, {bat1Name}:{val1}'.format(bat2Name, val2, bat1Name, val1)
-        print(r.batchRunName)
+        printmd(f"**{r.batchRunName}**")
 
         if trialCount > 0:
             elapsed = time.time() - batchStartTime
@@ -286,7 +286,28 @@ for idx2, val2 in enumerate(bat2Val):
 
         # *****************************
         # Change for this batch
-        r.config['dropout'] = val1
+        if val1 == 'conv':
+            r.config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
+            r.config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
+            r.config['convKernelSz'] = 10 # Kernel size per filter
+            r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
+            r.config['lstmWidths'] = [] # Number of neurons in each LSTM layer. They're cascaded.
+            r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
+        if val1 == 'lstm':
+            r.config['convDilation'] = [] # Time dilation factors. 
+            r.config['convFilters'] = [] # Number of filters per layer. List or scalar
+            r.config['convKernelSz'] = 10 # Kernel size per filter
+            r.config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM to reduce the LSTM size
+            r.config['lstmWidths'] = [128, 64] # Number of neurons in each LSTM layer. They're cascaded.
+            r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
+        if val1 == 'dense':
+            r.config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
+            r.config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
+            r.config['convKernelSz'] = 0 # Kernel size per filter
+            r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
+            r.config['lstmWidths'] = [] # Number of neurons in each LSTM layer. They're cascaded.
+            r.config['denseWidths'] = [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
+
         # *****************************
         
         dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames

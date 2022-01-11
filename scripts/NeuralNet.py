@@ -478,9 +478,15 @@ def MakeNetwork(r):
             this_layer = MakeLayerModule('lstm', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
                 name= f'lstm_{i}_{neurons}')
     
-    # Add dense feed
+    # Add dense input feed
     if feed_lens[FeedLoc.dense] > 0:
         this_layer = layers.concatenate([this_layer, feeds[FeedLoc.dense]])
+    
+    # Add any dense layers
+    for i, neurons in enumerate(r.config['denseWidths']):
+        if neurons > 0:
+            this_layer = MakeLayerModule('dense', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
+                name= f'dense_{i}_{neurons}')
 
     # Output (dense) layer
     main_output = layers.Dense(units=r.outFeatureCount, activation='linear', name='final_output')(this_layer)

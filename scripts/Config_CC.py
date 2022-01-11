@@ -82,6 +82,7 @@ def GetConfig():
     config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
     config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
     config['convKernelSz'] = 10 # Kernel size per filter
+    config['denseWidths'] = [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
 
 
 
