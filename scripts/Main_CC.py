@@ -216,38 +216,37 @@ else:
     print('Run next cell for batch...')
     
 
- #%%
+#%%
 # TRAIN BATCH
 if not single:
     # *****************************************************************************
     # Batch Run
     #
-    
-#    bat1Name = 'InScale'
-#    bat1Val = [0.1, 1, 10, 100]
-#    
-#    bat2Name = 'OutScale'
-#    bat2Val = [0.01, 0.1, 1, 10]
-    
-    bat1Name = 'InScale'
-    bat1Val = [1, 100]
-    
-    bat2Name = 'OutScale'
-    bat2Val = [0.1, 1]
+    r = ModelResult()
+    r.config = GetConfig() 
+    r.coinList = ['BTC', 'ETH']
+    r.numHours = 24*365*5
 
+    r.config['epochs'] = 8
+
+    # Batch changes
+    bat1Name = 'Binarise'
+    bat1Val = [0, 0.1, 0.2]
     
+    bat2Name = 'OutRange'
+    bat2Val = [[[1,5]], [[6,25]], [[26,125]]]
+
+    # Boilerplate...
     bat1Len = len(bat1Val)
     bat2Len = len(bat2Val)
     
     results = [0]*bat2Len
     r.isBatch = True
-    r.batchName = str(datetime.date.today()) + '_' + \
-    str(datetime.datetime.now().hour) + '_' + bat1Name + '_' + bat2Name
+    r.batchName = datetime.now().strftime('%Y-%m-%d_%h_') + '_' + bat1Name + '_' + bat2Name
     startR = r
     
     for idx2, val2 in enumerate(bat2Val):
         results[idx2] = [0]*bat1Len
-        # Change for batch2
         
         for idx1, val1 in enumerate(bat1Val):
             tf.keras.backend.clear_session() 
@@ -258,16 +257,18 @@ if not single:
             r.batchRunName = '{}:{}, {}:{}'.format(bat2Name, val2, bat1Name, val1)
             print(r.batchRunName)
              
-            r.config['earlyStopping'] = 20
             # *****************************
             # Change for this batch
-            r.config['inScale'] = val1
-            r.config['outScale'] = val2
+            r.config['binarise'] = val1
+            r.config['outputRanges'] = val2
+            # *****************************
             
             dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
             dfs, inData, outData, prices = PrepData(r, dfs)
             
-            NeuralNet.MakeAndTrainNetwork(r, inData, outData)
+            NeuralNet.MakeNetwork(r)
+            NeuralNet.TrainNetwork(r, inData, outData)
+
             #NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
             NeuralNet.TestNetwork(r, prices, inData, outData)
     
@@ -307,18 +308,18 @@ import keras_tuner as kt
 
 r.coinList = ['BTC', 'ETH']
 r.numHours = 24*365*3
-r.config['epochs'] = 8
+r.config['epochs'] = 64
 
 dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
 dfs, inData, outData, prices = PrepData(r, dfs)
 
 
 def build_model(hp):
-    #outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=72, sampling='log')
-    #r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
+    outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=144, sampling='log')
+    r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
 
     # Changing model
-    r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
+    #r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
 
     # lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3)
     # r.config['lstmWidths'] = []
@@ -334,7 +335,7 @@ def build_model(hp):
 tuner = kt.RandomSearch(
     hypermodel=build_model,
     objective=kt.Objective("val_score_sq_any", direction="max"),
-    max_trials=5,
+    max_trials=10,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
     directory="keras_tuner",
@@ -345,6 +346,8 @@ tuner.search_space_summary()
 
 fitArgs, checkpointCb, printoutCb = NeuralNet.PrepTrainNetwork(r, inData, outData)
 
+fitArgs['verbose'] = 1
+
 # Start
 start = time.time()
 tuner.search(**fitArgs)
@@ -352,7 +355,34 @@ end = time.time()
 r.trainTime = end-start
 print(f'Tuning Time (h:m:s)= {NeuralNet.SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
 
-tuner.results_summary()
+#tuner.results_summary(). # This is very poorly formatted
+
+#%%
+# Tuner results into pandas
+trials = tuner.oracle.get_best_trials(9999)
+dfData = [copy.deepcopy(t.hyperparameters.values) for t in trials]
+for i, row in enumerate(dfData):
+    row['rank'] = i
+    row['score'] = trials[i].score
+    row['id'] = trials[i].trial_id
+
+df = pd.DataFrame(dfData)
+df.set_index('id')
+print(df)
+
+# Plot tuner results
+hpNames = trials[0].hyperparameters.values.keys()
+fig, axs = plt.subplots(len(hpNames), 1, figsize=(r.config['plotWidth'] , 4 * len(hpNames)))
+if len(hpNames) == 1:
+    axs = [axs]
+
+fig.tight_layout()
+for ax, hpName in zip(axs, hpNames):
+    ax.plot(df[hpName], df['score'], 'x', label=hpName)
+    #ax.set_title(hpName)
+    ax.legend(labels=[hpName], loc='lower right')
+    ax.grid()
+plt.show()
 
 # %%
 if 1:

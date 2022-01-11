@@ -306,7 +306,7 @@ def PlotTrainMetrics(r, axIn=None):
     
     if axIn is None:
         ax.set_title('Training Scores (1=neutral, >1:better)')
-        fig.show()
+        plt.show()
     
     return (maxY, minY)
 

@@ -55,16 +55,17 @@ def GetConfig():
     # =0.8 gives a huge reduction of outliers
     # =3 makes the data almost binary
     # 0.4 is a good tradeoff for minimising outliers
-    config['binarise'] = 0.2
+    config['binarise'] = 0
     
     # Ternarise
     # Transform towards a ternary buy/sell/neutral
-    # minimiseoutliers = 10 (strict ternary). 
+    # ternarise = 10 (strict ternary). 
     # = 0.5 is less strict, but approaches binary
     # 1-3 seems preferable
     # Binarise and ternarse must not both be non-zero
     config['ternarise'] = 0
 
+    # selectivity only applies when ternarise is non-zero. Higher=more often neutral
     # selectivity 1=frequent buy/sell signals. 3=very picky buy/sell
     config['selectivity'] = 2
     # A good balance seems to be ternarise = 1, selectivity = 2
@@ -103,13 +104,36 @@ def GetConfig():
     # Note that a feature can be used at multiple feed locations
     flc = [[] for i in range(FeedLoc.LEN)]
 
+    # flc[FeedLoc.conv].append('ema')
+    # flc[FeedLoc.conv].append('dvg')
+    # flc[FeedLoc.lstm].append('volume')
+    # flc[FeedLoc.lstm].append('logDiff')
+    # flc[FeedLoc.lstm].append('rsi')
+    # flc[FeedLoc.dense].append('logDiff')
+    # flc[FeedLoc.dense].append('vix')
+
+    # Add everything everywhere
     flc[FeedLoc.conv].append('ema')
     flc[FeedLoc.conv].append('dvg')
+    flc[FeedLoc.conv].append('volume')
+    flc[FeedLoc.conv].append('logDiff')
+    flc[FeedLoc.conv].append('rsi')
+    flc[FeedLoc.conv].append('vix')
+
+    flc[FeedLoc.lstm].append('ema')
+    flc[FeedLoc.lstm].append('dvg')
     flc[FeedLoc.lstm].append('volume')
     flc[FeedLoc.lstm].append('logDiff')
     flc[FeedLoc.lstm].append('rsi')
+    flc[FeedLoc.lstm].append('vix')
+
+    flc[FeedLoc.dense].append('ema')
+    flc[FeedLoc.dense].append('dvg')
+    flc[FeedLoc.dense].append('volume')
     flc[FeedLoc.dense].append('logDiff')
+    flc[FeedLoc.dense].append('rsi')
     flc[FeedLoc.dense].append('vix')
+
 
     config['feedLoc'] = flc
 

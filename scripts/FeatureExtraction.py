@@ -66,7 +66,7 @@ def PlotInData(r, dfs, sample=0, tRange=2000, colPatterns=[]):
     ax.legend(handles = lines)
     ax.set_title('Input Data for: {}'.format(r.coinList[sample]))
     ax.grid()
-    #fig.show()
+    #plt.show()
 
 #==========================================================================
 def PlotOutData(r, prices, output, sample=0, tRange=0):
@@ -89,7 +89,7 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
     ax2.legend(handles = lines)
     ax2.set_title('Output for: {}'.format(r.coinList[sample]))
     ax2.grid()
-    fig.show()
+    plt.show()
 
 #==========================================================================
 def PrintInOutDataRanges(dfs, outData):
