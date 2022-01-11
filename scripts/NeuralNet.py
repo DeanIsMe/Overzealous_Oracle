@@ -18,12 +18,7 @@ import time
 import os
 #from ClockworkRNN import CWRNN
 
-from scripts.DataTypes import FeedLoc
-from DataTypes import printmd
-
-def SecToHMS(t):
-    """Makes a string like ' 2:15:36' to represent some duration, given in seconds. 8 chars"""
-    return f"{t//3600.:2.0f}:{(t%3600)//60.:02.0f}:{t%60.:02.0f}"
+from DataTypes import printmd, SecToHMS, FeedLoc
 
 #==========================================================================
 class FitnessCb(tf.keras.callbacks.Callback):
@@ -264,7 +259,7 @@ def _CalcIndices(tMax, dataRatios, exclude):
 
 
 #==========================================================================
-def PlotTrainMetrics(r, axIn=None):
+def PlotTrainMetrics(r, axIn=None, plotAbs=True, legend=True):
     #Plot Training
     if axIn is None:
         fig, ax = plt.subplots()
@@ -282,19 +277,21 @@ def PlotTrainMetrics(r, axIn=None):
     lines.append({'label':'ValSq',
                   'data':r.trainHistory['val_score_sq'],
                   'ls':'-', 'color':'C1'})
-    lines.append({'label':'TrainAbs',
-                  'data':r.trainHistory['train_score_abs'],
-                  'ls':':', 'color':'C0'})
-    lines.append({'label':'ValAbs',
-                  'data':r.trainHistory['val_score_abs'],
-                  'ls':':', 'color':'C1'})
+    if plotAbs:
+        lines.append({'label':'TrainAbs',
+                    'data':r.trainHistory['train_score_abs'],
+                    'ls':':', 'color':'C0'})
+        lines.append({'label':'ValAbs',
+                    'data':r.trainHistory['val_score_abs'],
+                    'ls':':', 'color':'C1'})
     handles = []
     for line in lines:
         lx, = ax.plot(line['data'], label=line['label'], linestyle=line['ls'], color=line['color'])
         handles.append(lx)
         maxY = max(maxY, max(line['data']))
         minY = min(minY, min(line['data']))
-    ax.legend(handles = handles)
+    if legend:
+        ax.legend(handles = handles)
 #    ax.set_yscale('log')
     
     if axIn is None:

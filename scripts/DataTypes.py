@@ -74,3 +74,8 @@ def printmd(string, color=None):
     else:
         colorstr = "<span style='color:{}'>{}</span>".format(color, string)
         display(Markdown(colorstr))
+
+
+def SecToHMS(t):
+    """Makes a string like ' 2:15:36' to represent some duration, given in seconds. 8 chars"""
+    return f"{t//3600.:2.0f}:{(t%3600)//60.:02.0f}:{t%60.:02.0f}"

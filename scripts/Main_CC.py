@@ -31,7 +31,7 @@ import FeatureExtraction as FE
 import NeuralNet
 from Config_CC import GetConfig
 
-from DataTypes import ModelResult, printmd
+from DataTypes import ModelResult, printmd, SecToHMS
 from TestSequences import GetInSeq
 import InputData as indata
 import copy
@@ -239,17 +239,17 @@ printmd('### Make & train DONE')
 r = ModelResult()
 r.config = GetConfig() 
 r.coinList = ['BTC']
-r.numHours = 24*365*3
+r.numHours = 24*365*1
 
-r.config['epochs'] = 64
+r.config['epochs'] = 8
 
 # Batch changes
-# Val1: rows. Val2:" columns"
-bat1Name = 'Trial'
-bat1Val = [1,2,3,4,5]
+# Val1: rows. Val2: columns
+bat1Name = 'Dropout'
+bat1Val = [0., 0.1]
 
-bat2Name = 'Dropout'
-bat2Val = [0., 0.1, 0.2, 0.35]
+bat2Name = 'Trial'
+bat2Val = [1,2,3]
 
 
 # Boilerplate...
@@ -263,6 +263,8 @@ startR = r
 
 printmd('# Batch run START')
 trialCount = 0
+totalTrials = bat1Len * bat2Len
+batchStartTime = time.time()
 
 for idx2, val2 in enumerate(bat2Val):
     results[idx2] = [0]*bat1Len
@@ -272,13 +274,18 @@ for idx2, val2 in enumerate(bat2Val):
         results[idx2][idx1] = copy.deepcopy(startR)
         r = results[idx2][idx1]
         
-        printmd(f'### BATCH RUN ({idx2}, {idx1}). Trial {trialCount} / {bat1Len * bat2Len}')
-        r.batchRunName = '{bat2Name}:{val2}, {bat1Name}:{val1}'.format(bat2Name, val2, bat1Name, val1)
+        printmd(f'### BATCH RUN ({idx2}, {idx1}). Trial {trialCount} / {totalTrials}')
+        r.batchRunName = f'{bat2Name}:{val2}, {bat1Name}:{val1}'.format(bat2Name, val2, bat1Name, val1)
         print(r.batchRunName)
-            
+
+        if trialCount > 0:
+            elapsed = time.time() - batchStartTime
+            remaining = elapsed / (trialCount) * (totalTrials - trialCount)
+            print(f"{SecToHMS(elapsed)} elapsed.  ~{SecToHMS(remaining)} remaining.")
+
         # *****************************
         # Change for this batch
-        r.config['dropout'] = val2
+        r.config['dropout'] = val1
         # *****************************
         
         dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
@@ -301,7 +308,7 @@ for idx2, rList in enumerate(results):
     for idx1, r in enumerate(rList):
         r = results[idx2][idx1]
         models[idx2][idx1] = r.model
-        r.model = 0
+        r.model = None
 
 filename = r.batchName + '.pickle'
 filehandler = open(filename, 'wb') 
@@ -331,25 +338,29 @@ import numpy as np
 import numbers
 from NeuralNet import PlotTrainMetrics
 
-# Uncomment either option A or B
-# OPTION A: batVal1 along x (columns), batVal2 along y (rows)
-#plt.figure(figsize=(bat1Len*5,bat2Len*3)); p = 1
-#for idx2 in range(bat2Len):
-#    for idx1 in range(bat1Len):
-#        plt.subplot(bat2Len, bat1Len, p)
-        
-# OPTION B: batVal2 along x (columns), batVal1 along y (rows)
-fig, axs = plt.subplots(bat1Len, bat2Len, figsize=(bat2Len*5,bat1Len*3)); p = 1
+# batVal2 along x (columns), batVal1 along y (rows)
+
+# if the 2nd variable is named 'trial', then stack lines on top
+columns = 1 if bat2Name.lower() == 'trial' else bat2Len
+    
+
+fig, axs = plt.subplots(bat1Len, columns, figsize=(columns*5,bat1Len*3)); p = 1
 fig.tight_layout()
+def getAx(idx1, idx2):
+    if columns == bat2Len:
+        return axs[idx1, idx2]
+    else:
+        return axs[idx1]
+
 minY = 9e9
 maxY = -9e9
 for idx1 in range(bat1Len):
     rowAx = []
     for idx2 in range(bat2Len):
-        ax = axs[idx1, idx2]
+        ax = getAx(idx1, idx2)
         r = results[idx2][idx1] # Pointer for brevity
         
-        (thisMaxY, thisMinY) = PlotTrainMetrics(r, ax)
+        (thisMaxY, thisMinY) = PlotTrainMetrics(r, ax, plotAbs=False, legend=((idx1+idx2)==0))
         maxY = max(maxY, thisMaxY)
         minY = min(minY, thisMinY)
         
@@ -357,16 +368,15 @@ for idx1 in range(bat1Len):
         #ax.set_yscale('log')
         ax.grid()
         
-        print('{}:{}, {}:{}'.format(bat2Name, bat2Val[idx2], bat1Name, bat1Val[idx1]))
-        print('Train Score: {:5}\nTest Score: {:5} (1=neutral)'.format(r.trainScore, r.testScore))
 
 maxY = round(maxY+0.05, 1)
 minY = round(minY-0.05, 1)
 # Set all to have the same axes
 for idx1 in range(bat1Len):
-    for idx2 in range(bat2Len):
-        axs[idx1,idx2].set_ylim(bottom=minY, top=maxY)
-        axs[idx1,idx2].set_xlim(left=0, right=r.config['epochs']-1)
+    for idx2 in range(columns):
+        ax = getAx(idx1, idx2)
+        ax.set_ylim(bottom=minY, top=maxY)
+        ax.set_xlim(left=0, right=r.config['epochs']-1)
 plt.show()
 
 
@@ -490,7 +500,7 @@ start = time.time()
 tuner.search(**fitArgs)
 end = time.time()
 r.trainTime = end-start
-print(f'Tuning Time (h:m:s)= {NeuralNet.SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
+print(f'Tuning Time (h:m:s)= {SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
 
 #tuner.results_summary(). # This is very poorly formatted
 
