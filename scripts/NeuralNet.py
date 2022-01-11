@@ -573,7 +573,7 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
 
 
 #==========================================================================
-def TrainNetwork(r, inData, outData, final=True):
+def TrainNetwork(r, inData, outData, final=True, plotMetrics=True):
     """
     final == True indicates that this is the final call for TrainNetwork for
     this model.
@@ -597,7 +597,7 @@ def TrainNetwork(r, inData, outData, final=True):
             r.trainHistory[key][hist.epoch[0]:hist.epoch[-1]+1] = hist.history[key]
  
 
-    if hist.epoch[-1]+1 != len(list(r.trainHistory.values())[0]):
+    if hist.epoch and hist.epoch[-1]+1 != len(list(r.trainHistory.values())[0]):
         raise Exception("Cur epoch doesn't match training hist. Program error")
     
     end = time.time()
@@ -627,10 +627,7 @@ def MakeAndTrainNetwork(r, inData, outData):
 
 #==========================================================================
 # Make several networks and choose the best
-def MakeAndTrainPrunedNetwork(r, inData, outData):
-    # SETTINGS
-    candidates = 5
-    trialEpochs = 16
+def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 16, drawPlots=True):
 
     # Create all models
     models = [0] * candidates
@@ -638,7 +635,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     for i in range(candidates):
         MakeNetwork(r)
         models[i] = r.model
-        if i == 0:
+        if i == 0 and drawPlots:
             PrintNetwork(r)
     printmd('**********************************************************************************')
     printmd('## PRUNED NETWORK')
@@ -656,7 +653,8 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
         print('\n************************************')
         printmd(f'Training candidate model **{i}** out of {candidates}')
         r.model = models[i]
-        TrainNetwork(r, inData, outData, final=False)
+        r.modelEpoch = -1
+        TrainNetwork(r, inData, outData, final=False, plotMetrics=False)
         trainHist[i] = r.trainHistory
 
         lossTrain[i] = r.trainHistory['mean_squared_error'][-1]
@@ -710,11 +708,11 @@ def MakeAndTrainPrunedNetwork(r, inData, outData):
     r.config['epochs'] = epochBackup
     r.model = models[bestI]
     r.trainHistory = trainHist[bestI]
-    TrainNetwork(r, inData, outData)
+    TrainNetwork(r, inData, outData, plotMetrics=drawPlots)
     return
     
 #==========================================================================
-def TestNetwork(r, priceData, inData, outData):
+def TestNetwork(r, priceData, inData, outData, drawPlots=True):
     tPlot = np.r_[0:r.timesteps] # Range of output plot (all data)
     if (r.config['dataRatios'][2] > 0.1):
         print('WARNING! TestNetwork uses Val Data as the test data, but Test Data also exists. ')
@@ -761,8 +759,10 @@ def TestNetwork(r, priceData, inData, outData):
     
     r.prediction = predictY
     # Plot prediction
-    for s in range(r.sampleCount):
-        _PlotOutput(priceData, outData, predictY, tPlot, s)
+
+    if drawPlots:
+        for s in range(r.sampleCount):
+            _PlotOutput(priceData, outData, predictY, tPlot, s)
     
     r.testAbsErr = np.sum(np.abs(predictY[:,testI,:] - outData[:,testI,:])) / predictY[:,testI,:].size
     r.neutralTestAbsErr = np.sum(np.abs(outData[:,testI,:])) / outData[:,testI,:].size

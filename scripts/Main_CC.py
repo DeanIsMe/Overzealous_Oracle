@@ -189,113 +189,108 @@ if 1:
     import importlib
     importlib.reload(NeuralNet)
 
-prunedNetwork = False # Pruned: generate multiple candidates and use the best
 
-single = True
-if single:
 # ************************
 # Single Run
-    r.isBatch = False
-    r.batchRunName = ''
-    
-    # !@#$
-    #r.config['lstmWidths'] = [64]
-    r.config['epochs'] = 8
-    
-    if not prunedNetwork:
-        NeuralNet.MakeNetwork(r)
-        NeuralNet.PrintNetwork(r)
-        NeuralNet.TrainNetwork(r, inData, outData)
-    else:
-        NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
+r.isBatch = False
+r.batchRunName = ''
 
-    NeuralNet.TestNetwork(r, prices, inData, outData)
-    
-    printmd('### Make & train DONE')
+# !@#$
+#r.config['lstmWidths'] = [64]
+r.config['epochs'] = 8
+
+prunedNetwork = False # Pruned: generate multiple candidates and use the best
+if not prunedNetwork:
+    NeuralNet.MakeNetwork(r)
+    NeuralNet.PrintNetwork(r)
+    NeuralNet.TrainNetwork(r, inData, outData)
 else:
-    print('Run next cell for batch...')
-    
+    NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
 
+NeuralNet.TestNetwork(r, prices, inData, outData)
+
+printmd('### Make & train DONE')
+
+
+# *****************************************************************************
 #%%
 # TRAIN BATCH
-if not single:
-    # *****************************************************************************
-    # Batch Run
-    #
-    r = ModelResult()
-    r.config = GetConfig() 
-    r.coinList = ['BTC', 'ETH']
-    r.numHours = 24*365*5
+# Batch Run
+#
+r = ModelResult()
+r.config = GetConfig() 
+r.coinList = ['BTC', 'ETH']
+r.numHours = 24*365*3
 
-    r.config['epochs'] = 8
+r.config['epochs'] = 64
 
-    # Batch changes
-    bat1Name = 'Binarise'
-    bat1Val = [0, 0.1, 0.2]
-    
-    bat2Name = 'OutRange'
-    bat2Val = [[[1,5]], [[6,25]], [[26,125]]]
+# Batch changes
+bat1Name = 'Binarise'
+bat1Val = [0]
 
-    # Boilerplate...
-    bat1Len = len(bat1Val)
-    bat2Len = len(bat2Val)
+bat2Name = 'OutRange'
+bat2Val = [[[1,5]], [[6,25]], [[26,125]]]
+
+# Boilerplate...
+bat1Len = len(bat1Val)
+bat2Len = len(bat2Val)
+
+results = [0]*bat2Len
+r.isBatch = True
+r.batchName = datetime.now().strftime('%Y-%m-%d_%h_') + '_' + bat1Name + '_' + bat2Name
+startR = r
+
+for idx2, val2 in enumerate(bat2Val):
+    results[idx2] = [0]*bat1Len
     
-    results = [0]*bat2Len
-    r.isBatch = True
-    r.batchName = datetime.now().strftime('%Y-%m-%d_%h_') + '_' + bat1Name + '_' + bat2Name
-    startR = r
-    
-    for idx2, val2 in enumerate(bat2Val):
-        results[idx2] = [0]*bat1Len
+    for idx1, val1 in enumerate(bat1Val):
+        tf.keras.backend.clear_session() 
+        results[idx2][idx1] = copy.deepcopy(startR)
+        r = results[idx2][idx1]
         
-        for idx1, val1 in enumerate(bat1Val):
-            tf.keras.backend.clear_session() 
-            results[idx2][idx1] = copy.deepcopy(startR)
-            r = results[idx2][idx1]
+        print('\n\nBATCH RUN ({}, {})'.format(idx2, idx1))
+        r.batchRunName = '{}:{}, {}:{}'.format(bat2Name, val2, bat1Name, val1)
+        print(r.batchRunName)
             
-            print('\n\nBATCH RUN ({}, {})'.format(idx2, idx1))
-            r.batchRunName = '{}:{}, {}:{}'.format(bat2Name, val2, bat1Name, val1)
-            print(r.batchRunName)
-             
-            # *****************************
-            # Change for this batch
-            r.config['binarise'] = val1
-            r.config['outputRanges'] = val2
-            # *****************************
-            
-            dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
-            dfs, inData, outData, prices = PrepData(r, dfs)
-            
-            NeuralNet.MakeNetwork(r)
-            NeuralNet.TrainNetwork(r, inData, outData)
+        # *****************************
+        # Change for this batch
+        r.config['binarise'] = val1
+        r.config['outputRanges'] = val2
+        # *****************************
+        
+        dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
+        dfs, inData, outData, prices = PrepData(r, dfs)
+        
+        #NeuralNet.MakeNetwork(r)
+        #NeuralNet.TrainNetwork(r, inData, outData)
 
-            #NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
-            NeuralNet.TestNetwork(r, prices, inData, outData)
-    
-    print('\n\nBATCH RUN FINISHED!\n')
-    # SAVE THE DATA
-    # Clear the model so that 'r' can pickle
-    models = [0] * bat2Len
-    for idx2, rList in enumerate(results):
-        models[idx2] = [0]*bat1Len
-        for idx1, r in enumerate(rList):
-            r = results[idx2][idx1]
-            models[idx2][idx1] = r.model
-            r.model = 0
-    
-    filename = r.batchName + '.pickle'
-    filehandler = open(filename, 'wb') 
-    pickle.dump(results, filehandler)
-    filehandler.close()
-    
-    # Copy the model back in
-    for idx2, rList in enumerate(results):
-        for idx1, r in enumerate(rList):
-            results[idx2][idx1].model = models[idx2][idx1]
-    
-    #Go to sleep
-    #print('Going to sleep...')
-    #os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
+        NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData, printNetwork=False)
+        NeuralNet.TestNetwork(r, prices, inData, outData)
+
+print('\n\nBATCH RUN FINISHED!\n')
+# SAVE THE DATA
+# Clear the model so that 'r' can pickle
+models = [0] * bat2Len
+for idx2, rList in enumerate(results):
+    models[idx2] = [0]*bat1Len
+    for idx1, r in enumerate(rList):
+        r = results[idx2][idx1]
+        models[idx2][idx1] = r.model
+        r.model = 0
+
+filename = r.batchName + '.pickle'
+filehandler = open(filename, 'wb') 
+pickle.dump(results, filehandler)
+filehandler.close()
+
+# Copy the model back in
+for idx2, rList in enumerate(results):
+    for idx1, r in enumerate(rList):
+        results[idx2][idx1].model = models[idx2][idx1]
+
+#Go to sleep
+#print('Going to sleep...')
+#os.startfile ('C:\\Users\\Dean\\Desktop\\Sleep.lnk')
 
 printmd('## Batch run DONE')
 
@@ -358,7 +353,7 @@ print(f'Tuning Time (h:m:s)= {NeuralNet.SecToHMS(r.trainTime)}.  {r.trainTime:.1
 #tuner.results_summary(). # This is very poorly formatted
 
 #%%
-# Tuner results into pandas
+# Keras tuner results into pandas
 trials = tuner.oracle.get_best_trials(9999)
 dfData = [copy.deepcopy(t.hyperparameters.values) for t in trials]
 for i, row in enumerate(dfData):
@@ -384,14 +379,3 @@ for ax, hpName in zip(axs, hpNames):
     ax.grid()
 plt.show()
 
-# %%
-if 1:
-    print('Reloading NeuralNet')
-    import importlib
-    importlib.reload(NeuralNet)
-    
-
-r.config['epochs'] = 8
-NeuralNet.MakeNetwork(r)
-NeuralNet.TrainNetwork(r, inData, outData)
- # %%
