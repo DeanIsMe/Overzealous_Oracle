@@ -182,7 +182,7 @@ class PrintoutCb(tf.keras.callbacks.Callback):
 
         def PrintHeaders():
             # Headers for the text table printed during training
-            print(f"Epoch TrainAbsSc ValAbsSc Fitness ProcTime Remaining")
+            print(f"Epoch TrainSqSc ValSqSc TrainScAny ValScAny Fitness ProcTime Remaining")
 
 
         # Epoch printout
@@ -193,8 +193,10 @@ class PrintoutCb(tf.keras.callbacks.Callback):
             #print(f"Epoch {epoch:2} - TrainErrSq={logs['loss']:6.3f}, ValErrSq={val_sq_err:6.3f}, Fitness={fitness:6.3f}, " +
                  #f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
             print(f"{epoch:5} " +
-            f"{logs['train_score_abs']:10.3f} " +
-            f"{logs['val_score_abs']:8.3f} " +
+            f"{logs['train_score_sq']:9.3f} " +
+            f"{logs['val_score_sq']:7.3f} " +
+            f"{logs['score_sq_any']:10.3f} " +
+            f"{logs['val_score_sq_any']:8.3f} " +
             f"{logs['fitness']:7.3f} " +
             #f"{logs['penalty']:7.3f} " +
             f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
@@ -267,10 +269,15 @@ def PlotTrainMetrics(r, axIn=None, plotAbs=True, legend=True):
     else:
         ax = axIn
 
+    dataPoints = len(r.trainHistory['loss'])
     maxY = -9e9
     minY = 9e9
     
     lines = []
+    lines.append({'label':'Neutral',
+                  'data':np.array([1.0] * dataPoints),
+                  'ls':'-', 'color':'k'})
+
     lines.append({'label':'TrainSq',
                   'data':r.trainHistory['train_score_sq'],
                   'ls':'-', 'color':'C0'})
@@ -278,12 +285,13 @@ def PlotTrainMetrics(r, axIn=None, plotAbs=True, legend=True):
                   'data':r.trainHistory['val_score_sq'],
                   'ls':'-', 'color':'C1'})
     if plotAbs:
-        lines.append({'label':'TrainAbs',
-                    'data':r.trainHistory['train_score_abs'],
+        lines.append({'label':'TrainScoreSqAny',
+                    'data':r.trainHistory['score_sq_any'],
                     'ls':':', 'color':'C0'})
-        lines.append({'label':'ValAbs',
-                    'data':r.trainHistory['val_score_abs'],
+        lines.append({'label':'ValScoreSqAny',
+                    'data':r.trainHistory['val_score_sq_any'],
                     'ls':':', 'color':'C1'})
+  
     handles = []
     for line in lines:
         lx, = ax.plot(line['data'], label=line['label'], linestyle=line['ls'], color=line['color'])
@@ -293,6 +301,7 @@ def PlotTrainMetrics(r, axIn=None, plotAbs=True, legend=True):
     if legend:
         ax.legend(handles = handles)
 #    ax.set_yscale('log')
+    ax.set_xlim(left=0, right=dataPoints-1)
     ax.grid(True)
     
     if axIn is None:
@@ -376,6 +385,16 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
             'name' : name
         }
         this_layer = layers.LSTM(**lstm_args)(this_layer)
+    elif type.lower() == 'gru':
+        gru_args = {
+            'units' : out_width, # hidden layer size, & output size
+            'dropout' : dropout_rate, # incorporated into the LSTM
+            'activation' : 'tanh',
+            'stateful' : False,
+            'return_sequences' : True, # I'm including output values for all time steps, so always true
+            'name' : name
+        }
+        this_layer = layers.GRU(**gru_args)(this_layer)
     else:
         raise Exception(f"MakeLayerModule type={type} is not recognized.")
     
@@ -385,8 +404,8 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
         this_layer = layers.AvgPool1D(pool_size=stride, strides=stride, padding='same', name='pl_' + name)(this_layer)
     
     # batch normalization
-
-    this_layer = layers.BatchNormalization(name='bn_' + name)(this_layer)
+    if batch_norm:
+        this_layer = layers.BatchNormalization(name='bn_' + name)(this_layer)
 
     return this_layer
 
@@ -449,7 +468,7 @@ def MakeNetwork(r):
         for i in range(convCfg['layerCount']):
             convLayers.append(MakeLayerModule('conv', feeds[FeedLoc.conv], out_width=convCfg['filters'][i],
                 kernel_size=convCfg['kernelSz'][i], dilation=convCfg['dilation'][i],
-                dropout_rate=r.config['dropout'],
+                dropout_rate=r.config['dropout'], batch_norm=r.config['batchNorm'],
                 name= f"conv1d_{i}_{convCfg['dilation'][i]}x"))
 
         if convCfg['layerCount'] == 0:
@@ -470,13 +489,14 @@ def MakeNetwork(r):
     bnw = r.config['bottleneckWidth']
     if bnw > 0:
         this_layer = MakeLayerModule('dense', this_layer, out_width=bnw, dropout_rate=r.config['dropout'],
-            name= f"bottleneck_{bnw}")
+            batch_norm=r.config['batchNorm'], name= f"bottleneck_{bnw}")
 
     # LSTM layers
+    rnn_type = 'gru' if r.config['useGru'] else 'lstm'
     for i, neurons in enumerate(r.config['lstmWidths']):
         if neurons > 0:
-            this_layer = MakeLayerModule('lstm', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
-                name= f'lstm_{i}_{neurons}')
+            this_layer = MakeLayerModule(rnn_type, this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
+                 batch_norm=r.config['batchNorm'], name= f'{rnn_type}_{i}_{neurons}')
     
     # Add dense input feed
     if feed_lens[FeedLoc.dense] > 0:
@@ -486,7 +506,7 @@ def MakeNetwork(r):
     for i, neurons in enumerate(r.config['denseWidths']):
         if neurons > 0:
             this_layer = MakeLayerModule('dense', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
-                name= f'dense_{i}_{neurons}')
+                batch_norm=r.config['batchNorm'], name= f'dense_{i}_{neurons}')
 
     # Output (dense) layer
     main_output = layers.Dense(units=r.outFeatureCount, activation='linear', name='final_output')(this_layer)
@@ -532,8 +552,6 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
 
     trainX = [arr[:,r.tInd['train'],:] for arr in inData]
     trainY = outData[:, r.tInd['train']]
-    valY = outData[:, r.tInd['val']]
-    
 
     r.neutralTrainAbsErr = np.sum(np.abs(trainY)) / trainY.size
     r.neutralValAbsErr = np.sum(np.abs(valY)) / valY.size

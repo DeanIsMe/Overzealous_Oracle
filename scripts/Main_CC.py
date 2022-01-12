@@ -7,14 +7,8 @@ Created on Dec 17  2017
 
 #%% 
 # IMPORTS & SETUP
-# Set the seed for repeatable results (careful with this use)
-#print('FIXING SEED FOR REPEATABLE RESULTS')
-#from numpy.random import seed
-#seed(5)
-#from tensorflow import set_random_seed
-#set_random_seed(3)
 
-# note that matplotlib notebook isn't working for me
+# note that "matplotlib notebook" isn't working for me
 %matplotlib widget
 
 import os
@@ -190,12 +184,30 @@ if 1:
     import importlib
     importlib.reload(NeuralNet)
 
+# Set the seed for repeatable results (careful with this use)
+# !@#$
+# print('FIXING SEED FOR REPEATABLE RESULTS')
+# from numpy.random import seed
+# seed(5)
+# tf.random.set_seed(5)
+
 printmd("## Start single train")
 r = ModelResult()
 r.config = GetConfig()
 
+
 r.coinList = ['BTC']
 r.numHours = 24*365*3
+r.config['epochs'] = 16
+
+
+r.config['convDilation'] = [] # Time dilation factors. 
+r.config['convFilters'] = [] # Number of filters per layer. List or scalar
+r.config['convKernelSz'] = 10 # Kernel size per filter
+r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
+r.config['lstmWidths'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
+r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
+
 
 dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
 dfs, inData, outData, prices = PrepData(r, dfs)
@@ -204,8 +216,6 @@ dfs, inData, outData, prices = PrepData(r, dfs)
 
 r.isBatch = False
 r.batchRunName = ''
-
-r.config['epochs'] = 8
 
 prunedNetwork = False # Pruned: generate multiple candidates and use the best
 if not prunedNetwork:
@@ -242,18 +252,19 @@ printmd('### Make & train DONE')
 r = ModelResult()
 r.config = GetConfig() 
 r.coinList = ['BTC']
-r.numHours = 24*365*5
+r.numHours = 24*365*3
 
 r.config['epochs'] = 64
 
 # Batch changes
 # Val1: rows. Val2: columns
-bat1Name = 'Network'
-bat1Val = ['conv', 'lstm', 'dense']
+bat1Name = 'BatchNorm'
+bat1Val = [False, True]
 
-bat2Name = 'Trial'
-bat2Val = [1,2,3]
-
+# bat2Name = 'Trial'
+# bat2Val = [1,2,3]
+bat2Name = 'Dropout'
+bat2Val = [0, 0.1, 0.2]
 
 # Boilerplate...
 bat1Len = len(bat1Val)
@@ -288,28 +299,29 @@ for idx2, val2 in enumerate(bat2Val):
 
         # *****************************
         # Change for this batch
-        if val1 == 'conv':
-            r.config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
-            r.config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
-            r.config['convKernelSz'] = 10 # Kernel size per filter
-            r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
-            r.config['lstmWidths'] = [] # Number of neurons in each LSTM layer. They're cascaded.
-            r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
-        if val1 == 'lstm':
-            r.config['convDilation'] = [] # Time dilation factors. 
-            r.config['convFilters'] = [] # Number of filters per layer. List or scalar
-            r.config['convKernelSz'] = 10 # Kernel size per filter
-            r.config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM to reduce the LSTM size
-            r.config['lstmWidths'] = [128, 64] # Number of neurons in each LSTM layer. They're cascaded.
-            r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
-        if val1 == 'dense':
-            r.config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
-            r.config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
-            r.config['convKernelSz'] = 0 # Kernel size per filter
-            r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
-            r.config['lstmWidths'] = [] # Number of neurons in each LSTM layer. They're cascaded.
-            r.config['denseWidths'] = [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
-
+        # if val2 == 'conv':
+        #     r.config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
+        #     r.config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
+        #     r.config['convKernelSz'] = 10 # Kernel size per filter
+        #     r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
+        #     r.config['lstmWidths'] = [] # Number of neurons in each LSTM layer. They're cascaded.
+        #     r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
+        # if val2 == 'lstm':
+        #     r.config['convDilation'] = [] # Time dilation factors. 
+        #     r.config['convFilters'] = [] # Number of filters per layer. List or scalar
+        #     r.config['convKernelSz'] = 10 # Kernel size per filter
+        #     r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
+        #     r.config['lstmWidths'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
+        #     r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
+        # if val2 == 'dense':
+        #     r.config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
+        #     r.config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
+        #     r.config['convKernelSz'] = 0 # Kernel size per filter
+        #     r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
+        #     r.config['lstmWidths'] = [] # Number of neurons in each LSTM layer. They're cascaded.
+        #     r.config['denseWidths'] = [512, 256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
+        r.config['dropout'] = val2
+        r.config['batchNorm'] = val1
         # *****************************
         
         dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
@@ -477,21 +489,20 @@ import keras_tuner as kt
 
 r = ModelResult()
 r.config = GetConfig() 
-r.coinList = ['BTC', 'ETH']
-r.numHours = 24*365*1
-r.config['epochs'] = 32
+r.coinList = ['BTC']
+r.numHours = 24*365*5
+r.config['epochs'] = 96
 
 class MyHyperModel(kt.HyperModel):
     """[summary]
     Default class is in:
     venv\Lib\site-packages\keras_tuner\engine\hypermodel.py
 
-    Args:
-        kt ([type]): [description]
     """
     def build(self, hp):
-        outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=144, sampling='log')
-        r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
+        # output range
+        # outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=144, sampling='log')
+        # r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
 
         # Output scaling
         # outliers = hp.Float("outliers", -0.3, 3.)
@@ -509,12 +520,13 @@ class MyHyperModel(kt.HyperModel):
         # Changing model
         #r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
 
-        # lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3)
-        # r.config['lstmWidths'] = []
-        # for i in range(lstmLayerCount):
-        #     r.config['lstmWidths'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=512, sampling='log'))
+        r.config['useGru'] = hp.Boolean("useGru")
+        lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3, sampling='log')
+        r.config['lstmWidths'] = []
+        for i in range(lstmLayerCount):
+            r.config['lstmWidths'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=128, sampling='log'))
         
-        # r.config['bottleneckWidth'] = hp.Int(f"bottleneckWidth", min_value=8, max_value=512, sampling='log')
+        r.config['bottleneckWidth'] = hp.Int(f"bottleneckWidth", min_value=16, max_value=128, sampling='log')
 
         dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
         self.dfs, self.inData, self.outData, self.prices = PrepData(r, dfs)
@@ -545,19 +557,24 @@ class MyHyperModel(kt.HyperModel):
 
             If return a float, it should be the `objective` value.
         """
-        #r=kwargs['r']
-        #dataLoader=kwargs['dataLoader']
         fitArgs, checkpointCb, printoutCb = NeuralNet.PrepTrainNetwork(r, self.inData, self.outData)
+        # keras tuner overried the callbacks passed to 'fit()'. Combine any kwargs with
+        # the args generated from my PrepTrainNetwork.
+        for key in kwargs.keys():
+            if key == 'callbacks':
+                fitArgs['callbacks'] = fitArgs['callbacks'] + kwargs['callbacks']
+            else:
+                fitArgs[key] = kwargs[key]
         fitArgs['verbose'] = 0
-        return model.fit(**fitArgs)
+        return model.fit(*args, **fitArgs)
 
 
 hyperModel = MyHyperModel()
 
 tuner = kt.RandomSearch(
     hypermodel=hyperModel,
-    objective=kt.Objective("val_score_sq_any", direction="max"), # CHANGE BACK TO VALIDATION
-    max_trials=10,
+    objective=kt.Objective("val_score_sq_any", direction="max"),
+    max_trials=80,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
     directory="keras_tuner",

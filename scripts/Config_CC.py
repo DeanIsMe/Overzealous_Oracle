@@ -83,13 +83,14 @@ def GetConfig():
     config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
     config['convKernelSz'] = 10 # Kernel size per filter
     config['denseWidths'] = [] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
-
+    config['batchNorm'] = False
+    config['useGru'] = True # If true, swaps the LSTM with a GRU
 
 
     # ****************************
     # TRAINING DATA
 
-    config['dataRatios'] = [0.75, 0.2 ,0.05] # Training, Validation, Testing
+    config['dataRatios'] = [0.80, 0.20 ,0.00] # Training, Validation, Testing
     #note: 03/02/2018 I am using the same set for validation and testing
     # I'm just using the 'test' set to generate state for prediction
 
@@ -143,7 +144,7 @@ def GetConfig():
 
     config['epochs'] = 8 # Number of complete passes of the data (subject to early stopping)
     
-    config['dropout'] = 0.1 # Dropout_rate of layer applied before each LSTM or Conv1D. Set to 0 to disable
+    config['dropout'] = 0.2 # Dropout_rate of layer applied before each LSTM or Conv1D. Set to 0 to disable
 
     # After training, change the weights to the model that had the best 
     # validation score
