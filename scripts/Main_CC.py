@@ -198,15 +198,8 @@ r.config = GetConfig()
 
 r.coinList = ['BTC']
 r.numHours = 24*365*3
-r.config['epochs'] = 16
-
-
-r.config['convDilation'] = [] # Time dilation factors. 
-r.config['convFilters'] = [] # Number of filters per layer. List or scalar
-r.config['convKernelSz'] = 10 # Kernel size per filter
-r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
-r.config['lstmWidths'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
-r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
+r.config['epochs'] = 128
+r.config['revertToBest'] = False
 
 
 dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
@@ -217,7 +210,7 @@ dfs, inData, outData, prices = PrepData(r, dfs)
 r.isBatch = False
 r.batchRunName = ''
 
-prunedNetwork = False # Pruned: generate multiple candidates and use the best
+prunedNetwork = True # Pruned: generate multiple candidates and use the best
 if not prunedNetwork:
     NeuralNet.MakeNetwork(r)
     NeuralNet.PrintNetwork(r)
@@ -254,23 +247,24 @@ r.config = GetConfig()
 r.coinList = ['BTC']
 r.numHours = 24*365*3
 
-r.config['epochs'] = 64
+r.config['epochs'] = 96
 
 # Batch changes
 # Val1: rows. Val2: columns
-bat1Name = 'BatchNorm'
-bat1Val = [False, True]
+bat1Name = 'Feed:'
+bat1Val = ['FrontFeeds', 'NoLogDiff']
 
-# bat2Name = 'Trial'
-# bat2Val = [1,2,3]
-bat2Name = 'Dropout'
-bat2Val = [0, 0.1, 0.2]
+bat2Name = 'Trial'
+bat2Val = [1,2,3]
+#bat2Name = 'Dropout'
+#bat2Val = [0., 0.1, 0.2, 0.35]
 
 # Boilerplate...
 bat1Len = len(bat1Val)
 bat2Len = len(bat2Val)
 
 results = [0]*bat2Len
+
 r.isBatch = True
 r.batchName = datetime.now().strftime('%Y-%m-%d_%H%M_') + '_' + bat1Name + '_' + bat2Name
 startR = r
@@ -320,8 +314,28 @@ for idx2, val2 in enumerate(bat2Val):
         #     r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
         #     r.config['lstmWidths'] = [] # Number of neurons in each LSTM layer. They're cascaded.
         #     r.config['denseWidths'] = [512, 256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
-        r.config['dropout'] = val2
-        r.config['batchNorm'] = val1
+
+        # Feed locations
+        flc = [[] for i in range(FeedLoc.LEN)]
+        if val1 == 'FrontFeeds':
+            # Add everything everywhere
+            flc[FeedLoc.conv].append('ema')
+            flc[FeedLoc.conv].append('dvg')
+            flc[FeedLoc.conv].append('volume')
+            flc[FeedLoc.conv].append('logDiff')
+            flc[FeedLoc.conv].append('rsi')
+            flc[FeedLoc.conv].append('vix')
+        elif val1 == 'NoLogDiff':
+            flc[FeedLoc.conv].append('ema')
+            flc[FeedLoc.conv].append('dvg')
+            flc[FeedLoc.conv].append('volume')
+            flc[FeedLoc.conv].append('rsi')
+            flc[FeedLoc.conv].append('vix')
+
+        r.config['feedLoc'] = flc
+
+
+        #r.config['batchNorm'] = val1
         # *****************************
         
         dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
@@ -365,7 +379,7 @@ printmd('## Batch run DONE')
 
 
 # *****************************************************************************
-#%%
+
 # BATCH: PLOT GRID
 
 import matplotlib
@@ -383,10 +397,11 @@ columns = 1 if bat2Name.lower() == 'trial' else bat2Len
 fig, axs = plt.subplots(bat1Len, columns, figsize=(columns*5,bat1Len*3)); p = 1
 fig.tight_layout()
 def getAx(idx1, idx2):
-    if columns == bat2Len:
-        return axs[idx1, idx2]
-    else:
-        return axs[idx1]
+    if bat1Len == 1:
+        if columns == bat2Len: return axs[idx2]
+        else: return axs
+    if columns == bat2Len: return axs[idx1, idx2]
+    else: return axs[idx1]
 
 minY = 9e9
 maxY = -9e9
@@ -425,7 +440,7 @@ def DrawPlot(valA, valB, nameA, nameB, data, nameY):
     # valA is the x axis
     if (not isinstance(valA[0], numbers.Number) or len(valA) < 3):
         return
-    fig, ax = plt.subplots(figsize=(7,4))
+    fig, ax = plt.subplots(figsize=(4,3))
     fig.tight_layout()
     ax.plot(valA, data)
     diffA = np.diff(valA)
@@ -435,31 +450,31 @@ def DrawPlot(valA, valB, nameA, nameB, data, nameY):
         ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
     ax.set_xlabel(nameA)
     ax.set_ylabel(nameY)
-    ax.set_title('{} vs {} (Legend = {})'.format(nameY, nameA, nameB))
+    ax.set_title('{} vs {} (Legend = {})'.format(nameY, nameA, nameB), fontdict={'fontsize':10})
     ax.legend(valB)
     ax.grid(True)
     plt.show()
 
 # Test Score vs bat1Val
-data = np.array([[r.testScore for r in results[idx2]] for idx2 in range(bat2Len)])
-DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'Test Score')
+data = np.array([[np.max(r.trainHistory['val_score_sq_any']) for r in results[idx2]] for idx2 in range(bat2Len)])
+DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'TestScoreAny')
 
 # Test Score vs bat2Val
-DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'Test Score')
+DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'TestScoreAny')
 
 # Train Score vs bat1Val
-data = np.array([[r.trainScore for r in results[idx2]] for idx2 in range(bat2Len)])
-DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'Train Score')
+data = np.array([[np.max(r.trainHistory['score_sq_any']) for r in results[idx2]] for idx2 in range(bat2Len)])
+DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'TrainScoreAny')
 
 # Train Score vs bat2Val
-DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'Train Score')
+DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'TrainScoreAny')
 
 # Training Time vs bat1Val
-data = np.array([[r.trainTime for r in results[idx2]] for idx2 in range(bat2Len)])
-DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'Training Time')
+data = np.array([[r.trainTime / len(r.trainHistory['loss']) for r in results[idx2]] for idx2 in range(bat2Len)])
+DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'SecPerEpoch')
 
 # Training Time vs bat2Val
-DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'Training Time')
+DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'SecPerEpoch')
 
 ## PLOT ALL PREDICTIONS
 #for idx1 in range(bat1Len):
