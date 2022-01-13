@@ -44,49 +44,34 @@ class FitnessCb(tf.keras.callbacks.Callback):
         
         # Determine the thresholds for penalising lack of movement
         # This is to avoid uneventful results that don't do anything
-        # Do this by comparing to a smoothed version of the target
-        totalDiff = 0
-        diffCount = 0
-        windowSz = 10
-        window = np.ones((windowSz,))/windowSz
-        for sample in range(outTarget.shape[0]):
-            for outIdx in range(outTarget.shape[-1]):
-                smoothed = np.convolve(outTarget[sample,:,outIdx], window, mode='valid')
-                totalDiff += np.sum(np.abs(np.diff(smoothed)))
-                diffCount += outTarget[sample,:,outIdx].size-1
-        avgDiffTarget = totalDiff / diffCount
-        self.avgDiffUpper = avgDiffTarget * 0.25 # above this, there's no penalisation
-        self.avgDiffLower = avgDiffTarget * 0.1 # Below this, the penalty is a maximum
+        self.dynamismTarget = np.mean(np.abs(outTarget[:, :-10, :] - outTarget[:, 10:, :]))
+
 
            
     #==========================================================================
     def on_epoch_end(self, epoch, logs={}):
-        fitness = 1/logs['val_mean_squared_error']
+        fitness = 1/logs['val_score_sq_any']
         penalty = 1. # fitness is multiplied by this penalty
         
+        # Penalise predictions that don't vary across the time series
+        # dynamismRatio is how 'dynamic' the prediction is compared to the target output
+        dynamismRatio = logs['val_dynamism'] / self.dynamismTarget
 
-        if 0: # !@# I've currently disabled the penalty calculations as it's expensive to predict
-            # Ideally, I'd be able to access predictions from the callback, but keras doesn't
-            # allow that. I could write a metric to perform this calculation, but that's a
-            # challenge to use onlly 'tensor operations'
-            predictY = self.model.predict(self.inData, batch_size=100)
-            # Note that the prediction has some initial period to build up state,
-            # then the actual prediction (len=targetTimeSteps)
-            err = predictY[:,-self.targetTimeSteps:,:] - self.outTarget
-            
-            # Penalise predictions that don't vary across the time series
-            thisDiff = np.mean(np.abs(np.diff(predictY, axis=1)))
-            debug = 0
-            if debug: print('Dif Score {:5f}, Lower {:5f}, Upper {:5f}'.format(thisDiff, self.avgDiffLower, self.avgDiffUpper), end='')
-            if thisDiff < self.avgDiffUpper:
-                penaltyLower = 0.001
-                penaltyUpper = 1
-                pos = (thisDiff - self.avgDiffLower) / (self.avgDiffUpper - self.avgDiffLower) # 0 to 1
-                penalty = (pos) * (penaltyUpper - penaltyLower) + penaltyLower
-                penalty = np.clip(penalty, penaltyLower, penaltyUpper)
-                fitness *= penalty
-                if debug: print(' scaler = {:5f}'.format(penalty))
-            if debug: print('') # new line
+        # CONSTANTS
+        upperR = 0.25 # above this, there's no penalisation
+        lowerR = 0.1 # Below this, the penalty is a maximum
+        penaltyLower = 0.01 # Max penalty (scaler)
+        penaltyUpper = 1. # Always 1
+
+        debug = 0
+        if debug: print(f"DynamismRatio = {dynamismRatio:7.5f}", end='')
+        if dynamismRatio < upperR:
+            pos = (dynamismRatio - lowerR) / (upperR - lowerR) # 0 to 1
+            penalty = (pos) * (penaltyUpper - penaltyLower) + penaltyLower
+            penalty = np.clip(penalty, penaltyLower, penaltyUpper)
+            fitness *= penalty
+            if debug: print(f" penalty = {penalty:5f}")
+        if debug: print('') # new line
         
         logs['fitness'] = fitness # for choosing the best model
         logs['penalty'] = penalty
@@ -182,7 +167,7 @@ class PrintoutCb(tf.keras.callbacks.Callback):
 
         def PrintHeaders():
             # Headers for the text table printed during training
-            print(f"Epoch TrainSqSc ValSqSc TrainScAny ValScAny Fitness ProcTime Remaining")
+            print(f"Epoch TrainSqSc ValSqSc TrainScAny ValScAny Penalty Fitness ProcTime Remaining")
 
 
         # Epoch printout
@@ -197,6 +182,7 @@ class PrintoutCb(tf.keras.callbacks.Callback):
             f"{logs['val_score_sq']:7.3f} " +
             f"{logs['score_sq_any']:10.3f} " +
             f"{logs['val_score_sq_any']:8.3f} " +
+            f"{logs['penalty']:7.3f} " +
             f"{logs['fitness']:7.3f} " +
             #f"{logs['penalty']:7.3f} " +
             f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
@@ -291,6 +277,10 @@ def PlotTrainMetrics(r, axIn=None, plotAbs=True, legend=True):
         lines.append({'label':'ValScoreSqAny',
                     'data':r.trainHistory['val_score_sq_any'],
                     'ls':':', 'color':'C1'})
+    
+    lines.append({'label':'Fitness',
+                  'data':r.trainHistory['fitness'],
+                  'ls':'-', 'color':'C2'})
   
     handles = []
     for line in lines:
@@ -441,6 +431,15 @@ def score_sq_any(y_true, y_pred):
     return tf.reduce_max(scores, axis=-1) # Choose the best score from the different output features
 
 #==========================================================================
+def dynamism(y_true, y_pred):
+    """Custom keras metric function
+    Assesses how much the prediction changes
+    """
+    diff = tf.subtract(y_pred[:,:-10,:], y_pred[:,10:,:])
+    out = tf.reduce_mean(tf.abs(diff), axis=-2) # average over the time series
+    return tf.reduce_mean(out, axis=-1) # average out the 'outFeature' axis
+
+#==========================================================================
 def MakeNetwork(r):
     # Prep convolution config
     convCfg = PrepConvConfig(r.config)
@@ -517,7 +516,7 @@ def MakeNetwork(r):
 
     # mape = mean absolute percentage error
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error', 'mean_squared_error', \
-        score_sq_any])
+        score_sq_any, dynamism])
     #r.model.build(input_shape=(None, r.inFeatureCount))
 
     return
@@ -764,7 +763,7 @@ def TestNetwork(r, priceData, inData, outData, drawPlots=True):
         # Save file if necessary
         if r.isBatch and sample == 0:
             try:
-                directory = './' + r.batchName
+                directory = './batches/' + r.batchName
                 if not os.path.exists(directory):
                     os.makedirs(directory)
                 filename = directory + '/'+ r.batchRunName +'.png'

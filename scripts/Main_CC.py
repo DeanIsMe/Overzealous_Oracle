@@ -197,7 +197,7 @@ r.config = GetConfig()
 
 r.coinList = ['BTC', 'ETH']
 r.numHours = 24*365*5
-r.config['epochs'] = 128
+r.config['epochs'] = 8
 r.config['revertToBest'] = False
 
 
@@ -209,10 +209,10 @@ dfs, inData, outData, prices = PrepData(r, dfs)
 r.isBatch = False
 r.batchRunName = ''
 
-prunedNetwork = True # Pruned: generate multiple candidates and use the best
+prunedNetwork = False # Pruned: generate multiple candidates and use the best
 if not prunedNetwork:
     NeuralNet.MakeNetwork(r)
-    NeuralNet.PrintNetwork(r)
+    #NeuralNet.PrintNetwork(r)
     NeuralNet.TrainNetwork(r, inData, outData)
 else:
     NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
