@@ -293,46 +293,6 @@ for idx2, val2 in enumerate(bat2Val):
 
         # *****************************
         # Change for this batch
-        # if val2 == 'conv':
-        #     r.config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
-        #     r.config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
-        #     r.config['convKernelSz'] = 10 # Kernel size per filter
-        #     r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
-        #     r.config['lstmWidths'] = [] # Number of neurons in each LSTM layer. They're cascaded.
-        #     r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
-        # if val2 == 'lstm':
-        #     r.config['convDilation'] = [] # Time dilation factors. 
-        #     r.config['convFilters'] = [] # Number of filters per layer. List or scalar
-        #     r.config['convKernelSz'] = 10 # Kernel size per filter
-        #     r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
-        #     r.config['lstmWidths'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
-        #     r.config['denseWidths'] = [] # These layers are added in series after LSTM and before output layers. Default: none
-        # if val2 == 'dense':
-        #     r.config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
-        #     r.config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
-        #     r.config['convKernelSz'] = 0 # Kernel size per filter
-        #     r.config['bottleneckWidth'] = 0 # A dense layer is added before the LSTM to reduce the LSTM size
-        #     r.config['lstmWidths'] = [] # Number of neurons in each LSTM layer. They're cascaded.
-        #     r.config['denseWidths'] = [512, 256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
-
-        # Feed locations
-        flc = [[] for i in range(FeedLoc.LEN)]
-        if val1 == 'FrontFeeds':
-            # Add everything everywhere
-            flc[FeedLoc.conv].append('ema')
-            flc[FeedLoc.conv].append('dvg')
-            flc[FeedLoc.conv].append('volume')
-            flc[FeedLoc.conv].append('logDiff')
-            flc[FeedLoc.conv].append('rsi')
-            flc[FeedLoc.conv].append('vix')
-        elif val1 == 'NoLogDiff':
-            flc[FeedLoc.conv].append('ema')
-            flc[FeedLoc.conv].append('dvg')
-            flc[FeedLoc.conv].append('volume')
-            flc[FeedLoc.conv].append('rsi')
-            flc[FeedLoc.conv].append('vix')
-
-        r.config['feedLoc'] = flc
 
 
         #r.config['batchNorm'] = val1
@@ -435,46 +395,69 @@ plt.show()
 #%%
 # LINE PLOTS
 
-# 1 PLOT, MULTIPLE LINES
-def DrawPlot(valA, valB, nameA, nameB, data, nameY):
-    # valA is the x axis
+
+def DrawPlotArgs(valA, valB, nameA, nameB, data, nameY):
+    """
+    Returns None, or a dictionary with arguments for DrawPlot
+    """
     if (not isinstance(valA[0], numbers.Number) or len(valA) < 3):
-        return
-    fig, ax = plt.subplots(figsize=(4,3))
-    fig.tight_layout()
+        return None
+    return {'valA':valA,
+    'valB':valB,
+    'nameA':nameA,
+    'nameB':nameB,
+    'data':data,
+    'nameY':nameY}
+    
+
+# 1 PLOT, MULTIPLE LINES
+def DrawPlot(ax, valA, valB, nameA, nameB, data, nameY):
+    # valA is the x axis
     ax.plot(valA, data)
     diffA = np.diff(valA)
     if diffA[-1]/diffA[0] > 5:
         ax.set_xscale('log')
         ax.set_xticks(valA)
         ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    ax.set_xlabel(nameA)
+    #ax.set_xlabel(nameA)
     ax.set_ylabel(nameY)
     ax.set_title('{} vs {} (Legend = {})'.format(nameY, nameA, nameB), fontdict={'fontsize':10})
     ax.legend(valB)
     ax.grid(True)
-    plt.show()
+    return ax
 
+plots = []
 # Test Score vs bat1Val
 data = np.array([[np.max(r.trainHistory['val_score_sq_any']) for r in results[idx2]] for idx2 in range(bat2Len)])
-DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'TestScoreAny')
+plots.append(DrawPlotArgs(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'TestScoreAny'))
 
 # Test Score vs bat2Val
-DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'TestScoreAny')
+plots.append(DrawPlotArgs(bat2Val, bat1Val, bat2Name, bat1Name, data, 'TestScoreAny'))
 
 # Train Score vs bat1Val
 data = np.array([[np.max(r.trainHistory['score_sq_any']) for r in results[idx2]] for idx2 in range(bat2Len)])
-DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'TrainScoreAny')
+plots.append(DrawPlotArgs(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'TrainScoreAny'))
 
 # Train Score vs bat2Val
-DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'TrainScoreAny')
+plots.append(DrawPlotArgs(bat2Val, bat1Val, bat2Name, bat1Name, data, 'TrainScoreAny'))
 
 # Training Time vs bat1Val
 data = np.array([[r.trainTime / len(r.trainHistory['loss']) for r in results[idx2]] for idx2 in range(bat2Len)])
-DrawPlot(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'SecPerEpoch')
+plots.append(DrawPlotArgs(bat1Val, bat2Val, bat1Name, bat2Name, data.transpose(), 'SecPerEpoch'))
 
 # Training Time vs bat2Val
-DrawPlot(bat2Val, bat1Val, bat2Name, bat1Name, data, 'SecPerEpoch')
+plots.append(DrawPlotArgs(bat2Val, bat1Val, bat2Name, bat1Name, data, 'SecPerEpoch'))
+
+# Remove 'None' values
+plots = [p for p in plots if p is not None]
+
+fig, axs = plt.subplots(len(plots), 1, figsize=(6,3*len(plots)))
+fig.tight_layout()
+
+for i, args in enumerate(plots):
+    DrawPlot(axs[i], **args)
+
+plt.show()
 
 ## PLOT ALL PREDICTIONS
 #for idx1 in range(bat1Len):
@@ -506,7 +489,7 @@ r = ModelResult()
 r.config = GetConfig() 
 r.coinList = ['BTC']
 r.numHours = 24*365*5
-r.config['epochs'] = 96
+r.config['epochs'] = 16
 
 class MyHyperModel(kt.HyperModel):
     """[summary]
@@ -535,13 +518,24 @@ class MyHyperModel(kt.HyperModel):
         # Changing model
         #r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
 
-        r.config['useGru'] = hp.Boolean("useGru")
-        lstmLayerCount = hp.Int("lstmLayerCount", min_value=1, max_value=3, sampling='log')
-        r.config['lstmWidths'] = []
-        for i in range(lstmLayerCount):
-            r.config['lstmWidths'].append(hp.Int(f"lstm_{i}", min_value=8, max_value=128, sampling='log'))
+
+        maxStepsPast = hp.Int('maxDaysPast', min_value=5, max_value=365) * 24
+
+        r.config['vixNumPastRanges'] = hp.Int("vixFeaturesP2", min_value=2, max_value=7, sampling='log') -2 # number of ranges to use
+        r.config['vixMaxPeriodPast'] = maxStepsPast
         
-        r.config['bottleneckWidth'] = hp.Int(f"bottleneckWidth", min_value=16, max_value=128, sampling='log')
+        # RSI - Relative Strength Index
+        rsiFeatures = hp.Int("rsiFeaturesP2", min_value=2, max_value=9, sampling='log') -2
+        r.config['rsiWindowLens'] = list(np.geomspace(start=5, stop=maxStepsPast, num=rsiFeatures, dtype=int)) # The span of the EMA calc for RSI. E.g. 24,96 for 2 RSI features with 24 and 96 steps
+        
+        # # Exponential Moving Average
+        # emaFeatures = hp.Int("emaFeatures", min_value=0, max_value=5, sampling='log')
+        # r.config['emaLengths'] = list(np.geomspace(start=5, stop=180*24, num=emaFeatures, dtype=int))
+
+        # I define divergence as the price relative to the moving average of X points
+        dvgFeatures = hp.Int("dvgFeaturesP2", min_value=2, max_value=9, sampling='log') -2
+        r.config['dvgLengths'] = np.geomspace(start=5, stop=maxStepsPast, num=dvgFeatures, dtype=int)
+
 
         dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
         self.dfs, self.inData, self.outData, self.prices = PrepData(r, dfs)
@@ -584,12 +578,21 @@ class MyHyperModel(kt.HyperModel):
         return model.fit(*args, **fitArgs)
 
 
+# run parameter
+log_dir = "logs/" + datetime.now().strftime('%Y-%m-%d_%H%M') + '/'
+tensorboard_cb = tf.keras.callbacks.TensorBoard(
+    log_dir=log_dir,
+    histogram_freq=1,
+    embeddings_freq=1,
+    write_graph=True,
+    update_freq='batch')
+
 hyperModel = MyHyperModel()
 
 tuner = kt.RandomSearch(
     hypermodel=hyperModel,
     objective=kt.Objective("val_score_sq_any", direction="max"),
-    max_trials=80,
+    max_trials=10,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
     directory="keras_tuner",
@@ -600,7 +603,7 @@ tuner.search_space_summary()
 
 # SEARCH
 start = time.time()
-tuner.search()
+tuner.search(callbacks=[tensorboard_cb])
 end = time.time()
 r.trainTime = end-start
 print(f'Tuning Time (h:m:s)= {SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
@@ -636,4 +639,37 @@ for ax, hpName in zip(axs, hpNames):
 plt.show()
 
 
+# %%
+# TEST - get tuner metrics
+# Something like this. Still in progress.
+# !@#$
+
+from tensorboard.backend.event_processing import event_accumulator
+
+best_trial = tuner.oracle.get_best_trials()[0].trial_id
+
+def extract_history(best_trial):
+
+  acc = []
+  val_acc = []
+  loss = []
+  val_loss = []
+
+  for set_data in ['train', 'validation']:
+    if set_data == 'train':
+      ea = event_accumulator.EventAccumulator(log_dir + best_trial + '/execution0/' + set_data)
+      ea.Reload()
+      for i in range(len(ea.Tensors('epoch_loss'))):
+        loss.append(float(tf.make_ndarray(ea.Tensors('epoch_loss')[i].tensor_proto)))
+        #lr.append(ea.Scalars('epoch_lr')[i][2])
+
+    if set_data == 'validation':
+        ea = event_accumulator.EventAccumulator(log_dir + best_trial + '/execution0/' + set_data)
+        ea.Reload()
+        for i in range(len(ea.Tensors('epoch_loss'))):
+            val_loss.append(float(tf.make_ndarray(ea.Tensors('epoch_loss')[i].tensor_proto)))
+
+  return loss, val_loss
+
+extract_history('35e3c7fc582261aef7ab042d6962cf40')
 # %%
