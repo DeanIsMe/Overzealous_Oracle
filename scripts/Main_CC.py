@@ -488,8 +488,8 @@ import keras_tuner as kt
 r = ModelResult()
 r.config = GetConfig() 
 r.coinList = ['BTC']
-r.numHours = 24*365*5
-r.config['epochs'] = 16
+r.numHours = 24*365*3
+r.config['epochs'] = 64
 
 class MyHyperModel(kt.HyperModel):
     """[summary]
@@ -567,7 +567,7 @@ class MyHyperModel(kt.HyperModel):
             If return a float, it should be the `objective` value.
         """
         fitArgs, checkpointCb, printoutCb = NeuralNet.PrepTrainNetwork(r, self.inData, self.outData)
-        # keras tuner overried the callbacks passed to 'fit()'. Combine any kwargs with
+        # keras tuner overrides the callbacks passed to 'fit()'. Combine any kwargs with
         # the args generated from my PrepTrainNetwork.
         for key in kwargs.keys():
             if key == 'callbacks':
@@ -592,7 +592,7 @@ hyperModel = MyHyperModel()
 tuner = kt.RandomSearch(
     hypermodel=hyperModel,
     objective=kt.Objective("val_score_sq_any", direction="max"),
-    max_trials=10,
+    max_trials=100,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
     directory="keras_tuner",
