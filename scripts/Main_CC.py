@@ -185,7 +185,6 @@ if 1:
     importlib.reload(NeuralNet)
 
 # Set the seed for repeatable results (careful with this use)
-# !@#$
 # print('FIXING SEED FOR REPEATABLE RESULTS')
 # from numpy.random import seed
 # seed(5)
@@ -196,8 +195,8 @@ r = ModelResult()
 r.config = GetConfig()
 
 
-r.coinList = ['BTC']
-r.numHours = 24*365*3
+r.coinList = ['BTC', 'ETH']
+r.numHours = 24*365*5
 r.config['epochs'] = 128
 r.config['revertToBest'] = False
 
@@ -226,7 +225,7 @@ printmd('### Make & train DONE')
 
 
 
-# ****************************************************************************************************************
+# ** **************************************************************************************************************
 # ****************************************************************************************************************
 # ****************************************************************************************************************
 #%%
@@ -244,18 +243,18 @@ printmd('### Make & train DONE')
 #
 r = ModelResult()
 r.config = GetConfig() 
-r.coinList = ['BTC']
-r.numHours = 24*365*3
+r.coinList = ['BTC', 'ETH']
+r.numHours = 24*365*5
 
-r.config['epochs'] = 96
+r.config['epochs'] = 64
 
 # Batch changes
 # Val1: rows. Val2: columns
-bat1Name = 'Feed:'
-bat1Val = ['FrontFeeds', 'NoLogDiff']
+bat1Name = 'DvgCount'
+bat1Val = [0,1,2,3,4,5]
 
-bat2Name = 'Trial'
-bat2Val = [1,2,3]
+bat2Name = 'MaxDaysPast'
+bat2Val = [5, 20, 80, 200]
 #bat2Name = 'Dropout'
 #bat2Val = [0., 0.1, 0.2, 0.35]
 
@@ -266,10 +265,19 @@ bat2Len = len(bat2Val)
 results = [0]*bat2Len
 
 r.isBatch = True
-r.batchName = datetime.now().strftime('%Y-%m-%d_%H%M_') + '_' + bat1Name + '_' + bat2Name
+r.batchName = datetime.now().strftime('%Y-%m-%d_%H%M') + '_' + bat1Name + '_' + bat2Name
+batchDir = f"batches/{r.batchName}/"
+os.makedirs(os.path.dirname(batchDir), exist_ok=True)
 startR = r
 
-printmd('# Batch run START')
+printmd('# Batch START')
+printmd(f"## {r.batchName}")
+print(r.batchName)
+print(f"bat1Name = {bat1Name}")
+print(f"bat1Val  = {bat1Val}")
+print(f"bat2Name = {bat2Name}")
+print(f"bat2Val  = {bat2Val}")
+
 trialCount = 0
 totalTrials = bat1Len * bat2Len
 batchStartTime = time.time()
@@ -282,8 +290,8 @@ for idx2, val2 in enumerate(bat2Val):
         results[idx2][idx1] = copy.deepcopy(startR)
         r = results[idx2][idx1]
         
-        printmd(f'### BATCH RUN ({idx2}, {idx1}). Trial {trialCount} / {totalTrials}')
         r.batchRunName = f'{bat2Name}:{val2}, {bat1Name}:{val1}'.format(bat2Name, val2, bat1Name, val1)
+        printmd(f'### Batch Run {trialCount} / {totalTrials} ({idx2}, {idx1})')
         printmd(f"**{r.batchRunName}**")
 
         if trialCount > 0:
@@ -294,11 +302,19 @@ for idx2, val2 in enumerate(bat2Val):
         # *****************************
         # Change for this batch
 
+        dvgFeatures = val1
+        maxDaysPast = val2
+        if dvgFeatures == 0:
+            r.config['dvgLengths'] = []
+        elif dvgFeatures == 1:
+            r.config['dvgLengths'] = [maxDaysPast * 24]
+        else:
+            np.geomspace(start=5, stop=maxDaysPast * 24, num=dvgFeatures, dtype=int)
 
         #r.config['batchNorm'] = val1
         # *****************************
         
-        dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
+        dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours, verbose=0) # a list of data frames
         dfs, inData, outData, prices = PrepData(r, dfs)
         
         NeuralNet.MakeNetwork(r)
@@ -309,7 +325,8 @@ for idx2, val2 in enumerate(bat2Val):
 
         trialCount += 1
 
-print('\n\nBATCH RUN FINISHED!\n')
+print(f"\n\nBATCH RUN FINISHED!\n Duration: {SecToHMS(time.time() - batchStartTime)}")
+
 # SAVE THE DATA
 # Clear the model so that 'r' can pickle
 models = [0] * bat2Len
@@ -320,8 +337,8 @@ for idx2, rList in enumerate(results):
         models[idx2][idx1] = r.model
         r.model = None
 
-filename = r.batchName + '.pickle'
-filehandler = open(filename, 'wb') 
+
+filehandler = open(batchDir + f"{r.batchName}.pickle", 'wb') 
 pickle.dump(results, filehandler)
 filehandler.close()
 
@@ -329,6 +346,15 @@ filehandler.close()
 for idx2, rList in enumerate(results):
     for idx1, r in enumerate(rList):
         results[idx2][idx1].model = models[idx2][idx1]
+
+
+filehandler = open(batchDir + f"config.txt", 'w') 
+filehandler.writelines(([f"{k:>20s} : {r.config[k]},\n" for k in r.config.keys()]))
+filehandler.close()
+
+filehandler = open(batchDir + f"r.txt", 'w') 
+filehandler.write(str(vars(r)))
+filehandler.close()
 
 #Go to sleep
 #print('Going to sleep...')
@@ -338,7 +364,7 @@ printmd('## Batch run DONE')
 
 
 
-# *****************************************************************************
+# # *****************************************************************************
 
 # BATCH: PLOT GRID
 
@@ -381,23 +407,24 @@ for idx1 in range(bat1Len):
 
 maxY = round(maxY+0.05, 1)
 minY = round(minY-0.05, 1)
-# Set all to have the same axes
+# Set all to have the same axes limits
 for idx1 in range(bat1Len):
     for idx2 in range(columns):
         ax = getAx(idx1, idx2)
         ax.set_ylim(bottom=minY, top=maxY)
         ax.set_xlim(left=0, right=r.config['epochs']-1)
 plt.show()
+plt.savefig(batchDir + "plot_trainMetrics.png")
 
 
 
 # *****************************************************************************
-#%%
 # LINE PLOTS
 
-
+#%%
 def DrawPlotArgs(valA, valB, nameA, nameB, data, nameY):
     """
+    Prepares and returns a dictionary with arguments for DrawPlot
     Returns None, or a dictionary with arguments for DrawPlot
     """
     if (not isinstance(valA[0], numbers.Number) or len(valA) < 3):
@@ -408,10 +435,9 @@ def DrawPlotArgs(valA, valB, nameA, nameB, data, nameY):
     'nameB':nameB,
     'data':data,
     'nameY':nameY}
-    
 
-# 1 PLOT, MULTIPLE LINES
 def DrawPlot(ax, valA, valB, nameA, nameB, data, nameY):
+    # Plots onto an existing axis
     # valA is the x axis
     ax.plot(valA, data)
     diffA = np.diff(valA)
@@ -419,6 +445,14 @@ def DrawPlot(ax, valA, valB, nameA, nameB, data, nameY):
         ax.set_xscale('log')
         ax.set_xticks(valA)
         ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    
+    # Add linear trendline
+    z = np.polyfit(valA, np.mean(data, axis=1) ,1)
+    p = np.poly1d(z)
+    ax.plot(valA, p(valA),ls=':', c='grey')
+    # the line equation:
+    print(f"Score vs {nameA:15s}. y= {z[0]:9.6f}x + {z[1]:9.6f}")
+
     #ax.set_xlabel(nameA)
     ax.set_ylabel(nameY)
     ax.set_title('{} vs {} (Legend = {})'.format(nameY, nameA, nameB), fontdict={'fontsize':10})
@@ -451,13 +485,15 @@ plots.append(DrawPlotArgs(bat2Val, bat1Val, bat2Name, bat1Name, data, 'SecPerEpo
 # Remove 'None' values
 plots = [p for p in plots if p is not None]
 
-fig, axs = plt.subplots(len(plots), 1, figsize=(6,3*len(plots)))
+#Now that I know how many plots there are, plot it!
+fig, axs = plt.subplots(len(plots), 1, figsize=(5,3*len(plots)))
 fig.tight_layout()
 
 for i, args in enumerate(plots):
     DrawPlot(axs[i], **args)
 
 plt.show()
+plt.savefig(batchDir + "plot_correlation.png")
 
 ## PLOT ALL PREDICTIONS
 #for idx1 in range(bat1Len):
@@ -487,8 +523,8 @@ import keras_tuner as kt
 
 r = ModelResult()
 r.config = GetConfig() 
-r.coinList = ['BTC']
-r.numHours = 24*365*3
+r.coinList = ['BTC', 'ETH']
+r.numHours = 24*365*5
 r.config['epochs'] = 64
 
 class MyHyperModel(kt.HyperModel):
@@ -518,26 +554,26 @@ class MyHyperModel(kt.HyperModel):
         # Changing model
         #r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
 
+        maxStepsPast = 100 * 24
 
-        maxStepsPast = hp.Int('maxDaysPast', min_value=5, max_value=365) * 24
-
-        r.config['vixNumPastRanges'] = hp.Int("vixFeaturesP2", min_value=2, max_value=7, sampling='log') -2 # number of ranges to use
+        r.config['vixNumPastRanges'] = hp.Int("vixFeatures", min_value=0, max_value=2) # number of ranges to use
         r.config['vixMaxPeriodPast'] = maxStepsPast
         
         # RSI - Relative Strength Index
-        rsiFeatures = hp.Int("rsiFeaturesP2", min_value=2, max_value=9, sampling='log') -2
-        r.config['rsiWindowLens'] = list(np.geomspace(start=5, stop=maxStepsPast, num=rsiFeatures, dtype=int)) # The span of the EMA calc for RSI. E.g. 24,96 for 2 RSI features with 24 and 96 steps
+        #rsiFeatures = hp.Int("rsiFeatures", min_value=0, max_value=2)
+        #r.config['rsiWindowLens'] = list(np.geomspace(start=5, stop=maxStepsPast, num=rsiFeatures, dtype=int)) # The span of the EMA calc for RSI. E.g. 24,96 for 2 RSI features with 24 and 96 steps
+        r.config['rsiWindowLens'] = []
         
         # # Exponential Moving Average
         # emaFeatures = hp.Int("emaFeatures", min_value=0, max_value=5, sampling='log')
         # r.config['emaLengths'] = list(np.geomspace(start=5, stop=180*24, num=emaFeatures, dtype=int))
 
         # I define divergence as the price relative to the moving average of X points
-        dvgFeatures = hp.Int("dvgFeaturesP2", min_value=2, max_value=9, sampling='log') -2
+        dvgFeatures = hp.Int("dvgFeatures", min_value=0, max_value=5)
         r.config['dvgLengths'] = np.geomspace(start=5, stop=maxStepsPast, num=dvgFeatures, dtype=int)
 
 
-        dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
+        dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours, verbose=0) # a list of data frames
         self.dfs, self.inData, self.outData, self.prices = PrepData(r, dfs)
         NeuralNet.MakeNetwork(r)
         return r.model
@@ -592,7 +628,7 @@ hyperModel = MyHyperModel()
 tuner = kt.RandomSearch(
     hypermodel=hyperModel,
     objective=kt.Objective("val_score_sq_any", direction="max"),
-    max_trials=100,
+    max_trials=40,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
     directory="keras_tuner",
@@ -639,37 +675,3 @@ for ax, hpName in zip(axs, hpNames):
 plt.show()
 
 
-# %%
-# TEST - get tuner metrics
-# Something like this. Still in progress.
-# !@#$
-
-from tensorboard.backend.event_processing import event_accumulator
-
-best_trial = tuner.oracle.get_best_trials()[0].trial_id
-
-def extract_history(best_trial):
-
-  acc = []
-  val_acc = []
-  loss = []
-  val_loss = []
-
-  for set_data in ['train', 'validation']:
-    if set_data == 'train':
-      ea = event_accumulator.EventAccumulator(log_dir + best_trial + '/execution0/' + set_data)
-      ea.Reload()
-      for i in range(len(ea.Tensors('epoch_loss'))):
-        loss.append(float(tf.make_ndarray(ea.Tensors('epoch_loss')[i].tensor_proto)))
-        #lr.append(ea.Scalars('epoch_lr')[i][2])
-
-    if set_data == 'validation':
-        ea = event_accumulator.EventAccumulator(log_dir + best_trial + '/execution0/' + set_data)
-        ea.Reload()
-        for i in range(len(ea.Tensors('epoch_loss'))):
-            val_loss.append(float(tf.make_ndarray(ea.Tensors('epoch_loss')[i].tensor_proto)))
-
-  return loss, val_loss
-
-extract_history('35e3c7fc582261aef7ab042d6962cf40')
-# %%

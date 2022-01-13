@@ -24,7 +24,7 @@ class DataLoader:
         filehandler.close()
     
     #*******************************************************************************
-    def GetHourlyDf(self, coins, num_hours):
+    def GetHourlyDf(self, coins, num_hours, verbose=1):
         """Grab the hourly data from file, as a list of DataFrames
 
         Args:
@@ -43,15 +43,18 @@ class DataLoader:
         base_options = ['usd', 'usdt']
         for coin in coins:
             coin_found = False
+            max_rows_avail = 0
             for base in base_options:
                 pair_check = coin.lower() + base
                 if pair_check in data:
                     # This trading pair exists. Check the duration
                     dur_avail = data[pair_check]['time'].iloc[-1] - data[pair_check]['time'].iloc[0]
                     rows_avail = len(data[pair_check])
+                    max_rows_avail = max(max_rows_avail, rows_avail)
                     if rows_avail > num_hours:
                         # Sufficient duration. Go with it!
-                        print(f'[{coin}] Using trading pair {pair_check}')
+                        if verbose > 0:
+                            print(f'[{coin}] Using trading pair {pair_check}')
                         # Extract the relevant rows and save
                         # copy() to avoid SettingWithCopyWarning error
                         this_df = data[pair_check].iloc[-num_hours:].copy()
@@ -60,8 +63,9 @@ class DataLoader:
                         coin_found = True
                         break
             if not coin_found:
-                printmd(f'\n**ERROR!**', color="0xFF8888")
-                print(f'GetHourlyDf: No valid pair found for {coin} in file {filename}')
+                printmd(f'\n **ERROR!**', color="0xFF8888")
+                print(f'GetHourlyDf: No valid pair found for {coin} in file {self.filename}.')
+                print(f"max_rows_avail={max_rows_avail}. Wanted {num_hours} rows.")
                 raise
         return dfs
 

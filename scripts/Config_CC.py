@@ -14,8 +14,8 @@ def GetConfig():
     # INPUT DATA / FEATURES
 
     # Volatility
-    config['vixNumPastRanges'] = 3 # number of ranges to use
-    config['vixMaxPeriodPast'] = 24*14
+    config['vixNumPastRanges'] = 2 # number of ranges to use
+    config['vixMaxPeriodPast'] = 14 * 24
     
     # RSI - Relative Strength Index
     config['rsiWindowLens'] = [24, 96] # The span of the EMA calc for RSI
@@ -24,7 +24,7 @@ def GetConfig():
     config['emaLengths'] = [] # The span of the EMAs
 
     # I define divergence as the price relative to the moving average of X points
-    config['dvgLengths'] = np.geomspace(start=10, stop=365, num=5, dtype=int)
+    config['dvgLengths'] = np.geomspace(start=1, stop=180, num=5, dtype=int) * 24
 
 
 

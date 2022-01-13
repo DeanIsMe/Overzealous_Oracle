@@ -340,6 +340,10 @@ def CalcVolatility(config, prices):
     maxDaysPast = config['vixMaxPeriodPast']
     firstPeriodLen = 5
 
+    volatility = np.zeros((samples, timesteps, numPeriods))
+    if numPeriods == 0:
+        return volatility
+
     # Legacy periods (as of 2022-01-10)
     # periodStartsB4Today, periodLengths = MakeExpSpacedPeriods(numPeriods, maxDaysPast, firstPeriodLen)
     # # Make all periods extend up to the present time
@@ -354,7 +358,6 @@ def CalcVolatility(config, prices):
     # Volatility
     # Diferences in the log2 domain are ratios, so the result is scale-agnostic (no further normalisation needed)
     noise = np.concatenate((np.square(np.diff(np.log2(prices))), [[0]]*samples), axis=1)
-    volatility = np.zeros((samples, timesteps, numPeriods))
     validity = np.zeros((samples, timesteps, numPeriods))
     for periodNum in range(numPeriods):
         for subPointNum in range(periodLengths[periodNum]):
