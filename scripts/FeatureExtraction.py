@@ -57,7 +57,7 @@ def PlotInData(r, dfs, sample=0, tRange=2000, colPatterns=[]):
     lines += ax.plot(x, ShiftAndScaleCol(df['close'][tInd]), label='price')
     l0, = ax.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
     ax.legend(handles = lines)
-    ax.set_title('Input Data for: {}'.format(r.coinList[sample]))
+    ax.set_title('Input Data for: {}'.format(r.config['coinList'][sample]))
     ax.grid()
     #plt.show()
 
@@ -73,14 +73,14 @@ def PlotOutData(r, prices, output, sample=0, tRange=0):
     fig, (ax1, ax2) = plt.subplots(2, sharex=True, figsize=(r.config['plotWidth'] , 7))
     fig.tight_layout()
     ax1.plot(x,prices[sample, tInd])
-    ax1.set_title('Price of {}'.format(r.coinList[sample]))
+    ax1.set_title('Price of {}'.format(r.config['coinList'][sample]))
     ax1.grid()
     lines = list(range(outDim))
     for i in range(outDim):
         lines[i], = ax2.plot(x,output[sample,tInd,i], label='Out{0}({1})'.format(i, r.config['outputRanges'][i]))
     l0, = ax2.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
     ax2.legend(handles = lines)
-    ax2.set_title('Output for: {}'.format(r.coinList[sample]))
+    ax2.set_title('Output for: {}'.format(r.config['coinList'][sample]))
     ax2.grid()
     plt.show()
 

@@ -10,8 +10,18 @@ import numpy as np
 def GetConfig():
     config = dict()
     
+
     # ****************************
-    # INPUT DATA / FEATURES
+    # INPUT DATA
+
+    # Raw data
+    config['coinList'] = ['BTC'] # a list of coin strings
+    config['numHours'] = 24*365*1
+
+    # ****************************
+    # INPUT FEATURES
+
+    
 
     # Volatility
     config['vixNumPastRanges'] = 3 # number of ranges to use

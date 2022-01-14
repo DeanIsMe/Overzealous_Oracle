@@ -195,13 +195,11 @@ r = ModelResult()
 r.config = GetConfig()
 
 
-r.coinList = ['BTC']
-r.numHours = 24*365*3
 r.config['epochs'] = 32
 r.config['revertToBest'] = False
 
 
-dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours) # a list of data frames
+dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours']) # a list of data frames
 dfs, inData, outData, prices = PrepData(r, dfs)
 
 #PlotInOutData(r, dfs, inData, outData, prices)
@@ -243,8 +241,6 @@ printmd('### Make & train DONE')
 #
 r = ModelResult()
 r.config = GetConfig() 
-r.coinList = ['BTC']
-r.numHours = 24*365*3
 
 r.config['epochs'] = 64
 
@@ -303,7 +299,7 @@ for idx2, val2 in enumerate(bat2Val):
         r.config['batchNorm'] = val1
         # *****************************
         
-        dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours, verbose=0) # a list of data frames
+        dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours'], verbose=0) # a list of data frames
         dfs, inData, outData, prices = PrepData(r, dfs)
         
         NeuralNet.MakeNetwork(r)
@@ -512,8 +508,6 @@ import keras_tuner as kt
 
 r = ModelResult()
 r.config = GetConfig() 
-r.coinList = ['BTC']
-r.numHours = 24*365*1
 r.config['epochs'] = 8
 
 
@@ -580,7 +574,7 @@ class MyHyperModel(kt.HyperModel):
         r.config['dvgLengths'] = np.geomspace(start=5, stop=maxStepsPast, num=dvgFeatures, dtype=int)
 
 
-        dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours, verbose=0) # a list of data frames
+        dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours'], verbose=0) # a list of data frames
         self.dfs, self.inData, self.outData, self.prices = PrepData(r, dfs)
         NeuralNet.MakeNetwork(r)
         return r.model

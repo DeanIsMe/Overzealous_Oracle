@@ -748,7 +748,7 @@ def TestNetwork(r, priceData, inData, outData, drawPlots=True):
         ax = axs[0]
         ax.figure = fig # required to avoid an exception
         ax.semilogy(tRange, priceData[sample, tRange]) # Daily data
-        ax.set_title('Prices. Sample {} ({}) [{}]'.format(r.coinList[sample], sample, r.batchRunName))
+        ax.set_title('Prices. Sample {} ({}) [{}]'.format(r.config['coinList'][sample], sample, r.batchRunName))
         ax.grid()
         
         for feature in range(r.outFeatureCount):
