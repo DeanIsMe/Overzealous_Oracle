@@ -769,6 +769,17 @@ for ax, hpName in zip(axs, colsToPlot):
 
 plt.show()
 plt.savefig(save_dir + "plot_per_hyperparam.png")
+
+# For the hyperparameters that aren't numerical, print out the averages for each
+colsToPrint = [hpName for hpName in hpNames if not is_numeric_dtype(df[hpName])]
+for col in colsToPrint:
+    # Calculate the average score for each value
+    meanVals = {val : df.loc[df.loc[:,col] == val, 'score'].mean() for val in df.loc[:, col].unique()}
+    print(f"Avgs for  {col}:")
+    for key in meanVals.keys():
+        print(f"{key:>15s} : {meanVals[key]:5.3f}")
+
+
 # %%
 # Keras tuner: For the best performing run, plot train metrics and test it
 best_trial_idx = df.loc[df['score'].idxmax(),'idx']
