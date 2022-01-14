@@ -170,6 +170,6 @@ def GetConfig():
     # ****************************
     # OTHER
 
-    config['plotWidth'] = 9
+    config['plotWidth'] = 5
 
     return config

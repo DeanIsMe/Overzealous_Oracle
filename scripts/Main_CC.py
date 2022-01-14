@@ -508,7 +508,11 @@ import keras_tuner as kt
 
 r = ModelResult()
 r.config = GetConfig() 
-r.config['epochs'] = 64
+r.config['epochs'] = 8
+tuner_trials = 8
+
+project_name = datetime.now().strftime('%Y-%m-%d_%H%M') + "_fortune_test"
+save_dir = "./keras_tuner/" + project_name + "/"
 
 
 class HistData:
@@ -685,11 +689,11 @@ hyperModel.setHistData(histData)
 tuner = MyRandomTuner(
     hypermodel=hyperModel,
     objective=kt.Objective("val_fitness", direction="max"),
-    max_trials=500,
+    max_trials=tuner_trials,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
     directory="keras_tuner",
-    project_name="fortune_test",
+    project_name=project_name,
 )
 tuner.setHistData(histData)
 
@@ -705,7 +709,7 @@ printmd("## keras tuner done")
 
 #tuner.results_summary(). # This is very poorly formatted
 
-# PRINT RESULTS
+# KERAS TUNER: PRINT RESULTS
 # Keras tuner results into pandas
 dfData = []
 metrics_max = ['val_fitness', 'fitness', 'val_score_sq_any', 'score_sq_any']
@@ -728,35 +732,45 @@ df = pd.DataFrame(dfData)
 df.set_index('idx')
 df
 
-# TODO improve this save location
-filehandler = open(f"df_custom" + datetime.now().strftime('%Y-%m-%d_%H%M') + ".pickle" , 'wb') 
+filehandler = open(save_dir + "df_trial_summary.pickle", 'wb') 
 pickle.dump(df, filehandler)
 filehandler.close()
+filehandler = open(save_dir + "trials_histData.pickle", 'wb') 
+pickle.dump(histData, filehandler)
+filehandler.close()
 
-#%%
 # Plot tuner results
+
+from pandas.api.types import is_numeric_dtype
 hpNames = histData.allHist[0]['hp'].keys()
-fig, axs = plt.subplots(len(hpNames), 1, figsize=(r.config['plotWidth'] , 4 * len(hpNames)))
-if len(hpNames) == 1:
+colsToPlot = [hpName for hpName in hpNames if is_numeric_dtype(df[hpName])]
+
+fig, axs = plt.subplots(len(colsToPlot), 1, figsize=(r.config['plotWidth'] , 4 * len(colsToPlot)))
+if len(colsToPlot) == 1:
     axs = [axs]
 
 fig.tight_layout()
-for ax, hpName in zip(axs, hpNames):
+for ax, hpName in zip(axs, colsToPlot):
+    if not is_numeric_dtype(df[hpName]):
+        continue
+
     ax.plot(df[hpName], df['score'], 'x', label=hpName)
 
     # Add linear trendline
     z = np.polyfit(df[hpName], df['score'] ,1)
     p = np.poly1d(z)
-    ax.plot(df[hpName], p(df[hpName]),ls=':', c='grey')
+    impact = abs(p(df[hpName].min()) - p(df[hpName].max()))
     # the line equation:
-    print(f"Score vs {hpName:15s}. y= {z[0]:9.6f}x + {z[1]:9.6f}")
+    print(f"Score vs {hpName:15s}. y= {z[0]:7.4f}x + {z[1]:7.4f}.  Impact = {impact:6.3f}")
+    ax.plot(df[hpName], p(df[hpName]),ls=':', c='grey')
 
-    ax.set_title(hpName, fontdict={'fontsize':10})
+    ax.set_title(f"{hpName} ({impact:.2f})" , fontdict={'fontsize':10})
     ax.grid()
-plt.show()
 
+plt.show()
+plt.savefig(save_dir + "plot_per_hyperparam.png")
 # %%
-# For the best performing, plot train metrics and test it
+# Keras tuner: For the best performing run, plot train metrics and test it
 best_trial_idx = df.loc[df['score'].idxmax(),'idx']
 best_trial_id = df.loc[best_trial_idx, 'trial_id']
 NeuralNet.PlotTrainMetrics(histData.allHist[best_trial_idx]['history'])
@@ -774,11 +788,11 @@ r.model.load_weights(tuner._get_checkpoint_fname(best_trial_id, best_trial_step)
 #r.model = tuner.load_model(tuner.oracle.get_trial(best_trial_id)) # Alternative
 
 r.trainHistory = histData.allHist[best_trial_idx]['history']
+r.modelEpoch = df.loc[best_trial_idx, 'best_epoch']
 # NeuralNet.PlotTrainMetrics(r.trainHistory)
 NeuralNet.TestNetwork(r, prices, inData, outData)
 
-if 0:
-    # Retrain the network. 
+if 0: # Retrain the network. 
     NeuralNet.MakeNetwork(r)
     #NeuralNet.PrintNetwork(r)
     NeuralNet.TrainNetwork(r, inData, outData)
