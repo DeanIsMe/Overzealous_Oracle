@@ -16,7 +16,7 @@ def GetConfig():
 
     # Raw data
     config['coinList'] = ['BTC'] # a list of coin strings
-    config['numHours'] = 24*365*1
+    config['numHours'] = 24*365*3
 
     # ****************************
     # INPUT FEATURES

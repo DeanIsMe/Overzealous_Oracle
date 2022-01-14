@@ -195,7 +195,7 @@ r = ModelResult()
 r.config = GetConfig()
 
 
-r.config['epochs'] = 32
+r.config['epochs'] = 8
 r.config['revertToBest'] = False
 
 
@@ -508,7 +508,7 @@ import keras_tuner as kt
 
 r = ModelResult()
 r.config = GetConfig() 
-r.config['epochs'] = 8
+r.config['epochs'] = 64
 
 
 class HistData:
@@ -516,6 +516,9 @@ class HistData:
     """
     def __init__(self):
         self.latestTrialId = None
+        self.latestHp = None
+        self.latestHistory = None
+        self.latestConfig = None
         self.allHist = []
 
 
@@ -539,30 +542,60 @@ class MyHyperModel(kt.HyperModel):
         # outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=144, sampling='log')
         # r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
 
-        # Output scaling
-        # outliers = hp.Float("outliers", -0.3, 3.)
-        # if outliers < 0.:
-        #     r.config['binarise'] = 0
-        #     r.config['ternarise'] = 0
-        # elif outliers < 1.:
-        #     r.config['binarise'] = outliers
-        #     r.config['ternarise'] = 0
-        # else:
-        #     r.config['binarise'] = 0
-        #     r.config['ternarise'] = (outliers - 1.) * 2.5
-        #     r.config['selectivity'] = hp.Float("selectivity", 1., 3.)
+        # Output transform
+        outTransform = hp.Choice("outTransform", ['none','binarise', 'ternarise'])
+        if outTransform == 'none':
+            r.config['binarise'] = 0
+            r.config['ternarise'] = 0
+        elif outTransform == 'binarise':
+            r.config['binarise'] = hp.Float("binarise", min_value=0., max_value=0.8)
+            r.config['ternarise'] = 0
+        elif outTransform == 'ternarise':
+            r.config['binarise'] = 0
+            r.config['ternarise'] = hp.Float("ternarise", min_value=0., max_value=5.)
+            r.config['selectivity'] = hp.Float("selectivity", 1., 3.)
 
         # Changing model
         #r.config['convKernelSz'] = hp.Int("convKernelSz", min_value=3, max_value=256, sampling='log')
+        r.config['useGru'] = hp.Boolean("useGru")
+        r.config['batchNorm'] = hp.Boolean("batchNorm")
+        r.config['dropout'] = hp.Float("dropout", 0., 0.3)
 
-        maxStepsPast = 100 * 24
+        r.config['bottleneckWidth'] = hp.Int("bottleneckWidth", min_value = 8, max_value = 128)
+        lstmStyle = hp.Int("lstmStyle", min_value = 0, max_value = 3)
+        if lstmStyle == 0:
+            r.config['lstmWidths'] = []
+        elif lstmStyle == 1:
+            r.config['lstmWidths'] = [32]
+        elif lstmStyle == 2:
+            r.config['lstmWidths'] = [128]
+        elif lstmStyle == 3:
+            r.config['lstmWidths'] = [96, 48]
+        
+        convKernel = hp.Int("convKernel", min_value=0, max_value=3)
+        if convKernel == 0:
+            r.config['convKernelSz'] = 0
+        elif convKernel == 1:
+            r.config['convKernelSz'] = 5
+        elif convKernel == 2:
+            r.config['convKernelSz'] = 10
+        elif convKernel == 3:
+            r.config['convKernelSz'] = 20
+
+        convFilterCnt = hp.Choice("convFilterCnt", [0.2, 0.4, 1., 2.])
+        r.config['convFilters'] = [80,75,70,65,60,50,40,30]
+        r.config['convFilters'] = [ f * convFilterCnt for f in r.config['convFilters']]
+
+
+        # Changing input data
+        maxStepsPast = hp.Int("maxDaysPast", min_value = 1, max_value = 365) * 24
 
         r.config['vixNumPastRanges'] = hp.Int("vixFeatures", min_value=0, max_value=2) # number of ranges to use
         r.config['vixMaxPeriodPast'] = maxStepsPast
         
         # RSI - Relative Strength Index
-        #rsiFeatures = hp.Int("rsiFeatures", min_value=0, max_value=2)
-        #r.config['rsiWindowLens'] = list(np.geomspace(start=5, stop=maxStepsPast, num=rsiFeatures, dtype=int)) # The span of the EMA calc for RSI. E.g. 24,96 for 2 RSI features with 24 and 96 steps
+        rsiFeatures = hp.Int("rsiFeatures", min_value=0, max_value=3)
+        r.config['rsiWindowLens'] = list(np.geomspace(start=5, stop=maxStepsPast, num=rsiFeatures, dtype=int)) # The span of the EMA calc for RSI. E.g. 24,96 for 2 RSI features with 24 and 96 steps
         r.config['rsiWindowLens'] = []
         
         # # Exponential Moving Average
@@ -574,9 +607,11 @@ class MyHyperModel(kt.HyperModel):
         r.config['dvgLengths'] = np.geomspace(start=5, stop=maxStepsPast, num=dvgFeatures, dtype=int)
 
 
+
         dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours'], verbose=0) # a list of data frames
         self.dfs, self.inData, self.outData, self.prices = PrepData(r, dfs)
         NeuralNet.MakeNetwork(r)
+        self.histData.latestConfig = r.config
         return r.model
 
     def fit(self, hp, model, *args, **kwargs):
@@ -613,7 +648,8 @@ class MyHyperModel(kt.HyperModel):
                 fitArgs[key] = kwargs[key]
         fitArgs['verbose'] = 0
         hist = model.fit(*args, **fitArgs)
-        histData.allHist.append({'id':histData.latestTrialId, 'hp':hp.values, 'history':hist.history})
+        self.histData.latestHp = hp.values
+        self.histData.latestHistory = hist.history
         return hist
 
 
@@ -626,11 +662,11 @@ class MyRandomTuner(kt.RandomSearch):
     def setHistData(self, histData:HistData):
         self.histData = histData
 
-    def on_trial_begin(self, trial):
+    def on_trial_end(self, trial):
         """Called at the beginning of a trial.
         """
-        histData.latestTrialId = trial.trial_id
-        super().on_trial_begin(trial)
+        self.histData.allHist.append({'id':trial.trial_id, 'hp':self.histData.latestHp, 'history':self.histData.latestHistory, 'config':self.histData.latestConfig})
+        super().on_trial_end(trial)
 
 
 log_dir = "logs/" + datetime.now().strftime('%Y-%m-%d_%H%M') + '/'
@@ -649,7 +685,7 @@ hyperModel.setHistData(histData)
 tuner = MyRandomTuner(
     hypermodel=hyperModel,
     objective=kt.Objective("val_fitness", direction="max"),
-    max_trials=10,
+    max_trials=500,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
     directory="keras_tuner",
@@ -668,12 +704,12 @@ print(f'Tuning Time (h:m:s)= {SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
 printmd("## keras tuner done")
 
 #tuner.results_summary(). # This is very poorly formatted
-#%%
+
 # PRINT RESULTS
 # Keras tuner results into pandas
 dfData = []
 metrics_max = ['val_fitness', 'fitness', 'val_score_sq_any', 'score_sq_any']
-score_metric = 'val_fitness' # The metric name that is the objective. Assumed maximized
+score_metric = tuner.oracle.objective.name # The metric name that is the objective. Assumed maximized
 for idx, trial in enumerate(histData.allHist):
     d = {}
     d['idx'] = idx
@@ -682,6 +718,7 @@ for idx, trial in enumerate(histData.allHist):
     # Add metrics
     d['score'] = np.max(trial['history'][score_metric])
     d['best_epoch'] = np.argmax(trial['history'][score_metric])
+    # Note that trial.best_step does NOT return the best epoch I could alternatively get the 'best epoch' from keras tuner: trial.best_step
     d['val_penalty_at_best'] = trial['history']['val_penalty'][d['best_epoch']]
     for metric in metrics_max:
         d['max_' + metric] = np.max(trial['history'][metric])
@@ -689,15 +726,14 @@ for idx, trial in enumerate(histData.allHist):
 
 df = pd.DataFrame(dfData)
 df.set_index('idx')
-print(df)
+df
+
+# TODO improve this save location
+filehandler = open(f"df_custom" + datetime.now().strftime('%Y-%m-%d_%H%M') + ".pickle" , 'wb') 
+pickle.dump(df, filehandler)
+filehandler.close()
 
 #%%
-# Plot train metrics of the best performing
-best_trial_idx = df.loc[df['score'].idxmax(),'idx']
-NeuralNet.PlotTrainMetrics(histData.allHist[best_trial_idx]['history'])
-
-
-
 # Plot tuner results
 hpNames = histData.allHist[0]['hp'].keys()
 fig, axs = plt.subplots(len(hpNames), 1, figsize=(r.config['plotWidth'] , 4 * len(hpNames)))
@@ -707,9 +743,42 @@ if len(hpNames) == 1:
 fig.tight_layout()
 for ax, hpName in zip(axs, hpNames):
     ax.plot(df[hpName], df['score'], 'x', label=hpName)
-    #ax.set_title(hpName)
+
+    # Add linear trendline
+    z = np.polyfit(df[hpName], df['score'] ,1)
+    p = np.poly1d(z)
+    ax.plot(df[hpName], p(df[hpName]),ls=':', c='grey')
+    # the line equation:
+    print(f"Score vs {hpName:15s}. y= {z[0]:9.6f}x + {z[1]:9.6f}")
+
     ax.set_title(hpName, fontdict={'fontsize':10})
     ax.grid()
 plt.show()
 
-# TODO add trendlines
+# %%
+# For the best performing, plot train metrics and test it
+best_trial_idx = df.loc[df['score'].idxmax(),'idx']
+best_trial_id = df.loc[best_trial_idx, 'trial_id']
+NeuralNet.PlotTrainMetrics(histData.allHist[best_trial_idx]['history'])
+
+
+r = ModelResult()
+r.config = histData.allHist[best_trial_idx]['config']
+
+dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours'], verbose=0) # a list of data frames
+dfs, inData, outData, prices = PrepData(r, dfs)
+NeuralNet.MakeNetwork(r)
+NeuralNet.PrepTrainNetwork(r, inData, outData)
+best_trial_step = tuner.oracle.get_trial(best_trial_id).best_step # Note that this DOESN'T MATCH with best_epoch. Not sure why keras tuner operates like this
+r.model.load_weights(tuner._get_checkpoint_fname(best_trial_id, best_trial_step))
+#r.model = tuner.load_model(tuner.oracle.get_trial(best_trial_id)) # Alternative
+
+r.trainHistory = histData.allHist[best_trial_idx]['history']
+# NeuralNet.PlotTrainMetrics(r.trainHistory)
+NeuralNet.TestNetwork(r, prices, inData, outData)
+
+if 0:
+    # Retrain the network. 
+    NeuralNet.MakeNetwork(r)
+    #NeuralNet.PrintNetwork(r)
+    NeuralNet.TrainNetwork(r, inData, outData)
