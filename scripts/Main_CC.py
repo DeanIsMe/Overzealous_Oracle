@@ -508,7 +508,7 @@ import keras_tuner as kt
 
 r = ModelResult()
 r.config = GetConfig() 
-r.config['epochs'] = 8
+r.config['epochs'] = 64
 tuner_trials = 8
 
 project_name = datetime.now().strftime('%Y-%m-%d_%H%M') + "_fortune_test"
@@ -642,6 +642,11 @@ class MyHyperModel(kt.HyperModel):
 
             If return a float, it should be the `objective` value.
         """
+        if 'epochs' in kwargs:
+            r.config['epochs'] = kwargs['epochs']
+        if 'initial_epoch' in kwargs:
+            r.modelEpoch = kwargs['initial_epoch'] - 1
+        
         fitArgs, checkpointCb, printoutCb = NeuralNet.PrepTrainNetwork(r, self.inData, self.outData)
         # keras tuner overrides the callbacks passed to 'fit()'. Combine any kwargs with
         # the args generated from my PrepTrainNetwork.
@@ -656,13 +661,24 @@ class MyHyperModel(kt.HyperModel):
         self.histData.latestHistory = hist.history
         return hist
 
-
 class MyRandomTuner(kt.RandomSearch):
     """I created this custom class solely to get the trial ID
     """
     # def __init__(self, *args, **kwargs):
     #     super().__init__(*args, **kwargs)
 
+    def setHistData(self, histData:HistData):
+        self.histData = histData
+
+    def on_trial_end(self, trial):
+        """Called at the beginning of a trial.
+        """
+        self.histData.allHist.append({'id':trial.trial_id, 'hp':self.histData.latestHp, 'history':self.histData.latestHistory, 'config':self.histData.latestConfig})
+        super().on_trial_end(trial)
+
+class MyHyperbandTuner(kt.Hyperband):
+    """I created this custom class solely to get the trial ID
+    """
     def setHistData(self, histData:HistData):
         self.histData = histData
 
@@ -686,15 +702,32 @@ histData = HistData()
 hyperModel = MyHyperModel()
 hyperModel.setHistData(histData)
 
-tuner = MyRandomTuner(
-    hypermodel=hyperModel,
-    objective=kt.Objective("val_fitness", direction="max"),
-    max_trials=tuner_trials,
-    executions_per_trial=1, # number of attempts with the same settings
-    overwrite=True,
-    directory="keras_tuner",
-    project_name=project_name,
-)
+if 1:
+    printmd("### Using Random tuner")
+    tuner = MyRandomTuner(
+        hypermodel=hyperModel,
+        objective=kt.Objective("val_fitness", direction="max"),
+        max_trials=tuner_trials,
+        executions_per_trial=1, # number of attempts with the same settings
+        overwrite=True,
+        directory="keras_tuner",
+        project_name=project_name,
+    )
+else:
+    # Hyperband tuner assumes that the results after a couple of epochs
+    # give some indication 
+    printmd("### Using Hyperband tuner")
+    tuner = MyHyperbandTuner(
+        hypermodel=hyperModel,
+        objective=kt.Objective("val_fitness", direction="max"),
+        max_epochs = r.config['epochs'],
+        factor=3,
+        hyperband_iterations=3, # Set as high as resources allow
+        overwrite=True,
+        directory="keras_tuner",
+        project_name=project_name,
+    )
+
 tuner.setHistData(histData)
 
 tuner.search_space_summary()
