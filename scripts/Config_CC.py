@@ -14,7 +14,7 @@ def GetConfig():
     # INPUT DATA / FEATURES
 
     # Volatility
-    config['vixNumPastRanges'] = 2 # number of ranges to use
+    config['vixNumPastRanges'] = 3 # number of ranges to use
     config['vixMaxPeriodPast'] = 14 * 24
     
     # RSI - Relative Strength Index
@@ -55,7 +55,7 @@ def GetConfig():
     # =0.8 gives a huge reduction of outliers
     # =3 makes the data almost binary
     # 0.4 is a good tradeoff for minimising outliers
-    config['binarise'] = 0
+    config['binarise'] = 0.2
     
     # Ternarise
     # Transform towards a ternary buy/sell/neutral
@@ -74,8 +74,8 @@ def GetConfig():
     # ****************************
     # NEURAL NET (MODEL)
 
-    config['bottleneckWidth'] = 64 # A dense layer is added before the LSTM to reduce the LSTM size
-    config['lstmWidths'] = [96] # Number of neurons in each LSTM layer. They're cascaded.
+    config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM to reduce the LSTM size
+    config['lstmWidths'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
     # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
     # The num of conv layers will be the greatest number of valid layers
     # If any parameter is empty ([] or 0), then there will be no convolutional layers
@@ -84,7 +84,7 @@ def GetConfig():
     config['convKernelSz'] = 10 # Kernel size per filter
     config['denseWidths'] = [] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
     config['batchNorm'] = True
-    config['useGru'] = True # If true, swaps the LSTM with a GRU
+    config['useGru'] = False # If true, swaps the LSTM with a GRU
 
 
     # ****************************
@@ -106,13 +106,34 @@ def GetConfig():
     # Note that a feature can be used at multiple feed locations
     flc = [[] for i in range(FeedLoc.LEN)]
 
-    # 2022-01-12 I found that feeding via the front seemed to be best
+    # flc[FeedLoc.conv].append('ema')
+    # flc[FeedLoc.conv].append('dvg')
+    # flc[FeedLoc.conv].append('volume')
+    # flc[FeedLoc.conv].append('logDiff')
+    # flc[FeedLoc.conv].append('rsi')
+    # flc[FeedLoc.conv].append('vix')
+    
+    # Add everything everywhere
     flc[FeedLoc.conv].append('ema')
     flc[FeedLoc.conv].append('dvg')
     flc[FeedLoc.conv].append('volume')
     flc[FeedLoc.conv].append('logDiff')
     flc[FeedLoc.conv].append('rsi')
     flc[FeedLoc.conv].append('vix')
+
+    flc[FeedLoc.lstm].append('ema')
+    flc[FeedLoc.lstm].append('dvg')
+    flc[FeedLoc.lstm].append('volume')
+    flc[FeedLoc.lstm].append('logDiff')
+    flc[FeedLoc.lstm].append('rsi')
+    flc[FeedLoc.lstm].append('vix')
+
+    flc[FeedLoc.dense].append('ema')
+    flc[FeedLoc.dense].append('dvg')
+    flc[FeedLoc.dense].append('volume')
+    flc[FeedLoc.dense].append('logDiff')
+    flc[FeedLoc.dense].append('rsi')
+    flc[FeedLoc.dense].append('vix')
 
     config['feedLoc'] = flc
 
