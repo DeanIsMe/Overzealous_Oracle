@@ -195,9 +195,9 @@ r = ModelResult()
 r.config = GetConfig()
 
 
-r.coinList = ['BTC', 'ETH']
-r.numHours = 24*365*1
-r.config['epochs'] = 16
+r.coinList = ['BTC']
+r.numHours = 24*365*3
+r.config['epochs'] = 32
 r.config['revertToBest'] = False
 
 
@@ -243,20 +243,18 @@ printmd('### Make & train DONE')
 #
 r = ModelResult()
 r.config = GetConfig() 
-r.coinList = ['BTC', 'ETH']
-r.numHours = 24*365*5
+r.coinList = ['BTC']
+r.numHours = 24*365*3
 
 r.config['epochs'] = 64
 
 # Batch changes
 # Val1: rows. Val2: columns
-bat1Name = 'DvgCount'
-bat1Val = [0,1,2,3,4,5]
+bat1Name = 'BatchNorm'
+bat1Val = [False, True]
 
-bat2Name = 'MaxDaysPast'
-bat2Val = [5, 20, 80, 200]
-#bat2Name = 'Dropout'
-#bat2Val = [0., 0.1, 0.2, 0.35]
+bat2Name = 'Trial'
+bat2Val = [0, 1, 2]
 
 # Boilerplate...
 bat1Len = len(bat1Val)
@@ -302,16 +300,7 @@ for idx2, val2 in enumerate(bat2Val):
         # *****************************
         # Change for this batch
 
-        dvgFeatures = val1
-        maxDaysPast = val2
-        if dvgFeatures == 0:
-            r.config['dvgLengths'] = []
-        elif dvgFeatures == 1:
-            r.config['dvgLengths'] = [maxDaysPast * 24]
-        else:
-            np.geomspace(start=5, stop=maxDaysPast * 24, num=dvgFeatures, dtype=int)
-
-        #r.config['batchNorm'] = val1
+        r.config['batchNorm'] = val1
         # *****************************
         
         dfs = dataLoader.GetHourlyDf(r.coinList, r.numHours, verbose=0) # a list of data frames
@@ -397,7 +386,7 @@ for idx1 in range(bat1Len):
         ax = getAx(idx1, idx2)
         r = results[idx2][idx1] # Pointer for brevity
         
-        (thisMaxY, thisMinY) = PlotTrainMetrics(r, ax, legend=((idx1+idx2)==0))
+        (thisMaxY, thisMinY) = PlotTrainMetrics(r.trainHistory, ax, legend=((idx1+idx2)==0))
         maxY = max(maxY, thisMaxY)
         minY = min(minY, thisMinY)
         
@@ -523,9 +512,18 @@ import keras_tuner as kt
 
 r = ModelResult()
 r.config = GetConfig() 
-r.coinList = ['BTC', 'ETH']
-r.numHours = 24*365*5
-r.config['epochs'] = 64
+r.coinList = ['BTC']
+r.numHours = 24*365*1
+r.config['epochs'] = 8
+
+
+class HistData:
+    """Tiny class (struct) to store history data during keras training
+    """
+    def __init__(self):
+        self.latestTrialId = None
+        self.allHist = []
+
 
 class MyHyperModel(kt.HyperModel):
     """[summary]
@@ -533,6 +531,15 @@ class MyHyperModel(kt.HyperModel):
     venv\Lib\site-packages\keras_tuner\engine\hypermodel.py
 
     """
+    
+
+    # def __init__(self, *args, **kwargs):
+    #     super(MyHyperModel, self).__init__(*args, **kwargs)
+    #     self.allHist = []
+
+    def setHistData(self, histData:HistData):
+        self.histData = histData
+
     def build(self, hp):
         # output range
         # outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=144, sampling='log')
@@ -611,10 +618,27 @@ class MyHyperModel(kt.HyperModel):
             else:
                 fitArgs[key] = kwargs[key]
         fitArgs['verbose'] = 0
-        return model.fit(*args, **fitArgs)
+        hist = model.fit(*args, **fitArgs)
+        histData.allHist.append({'id':histData.latestTrialId, 'hp':hp.values, 'history':hist.history})
+        return hist
 
 
-# run parameter
+class MyRandomTuner(kt.RandomSearch):
+    """I created this custom class solely to get the trial ID
+    """
+    # def __init__(self, *args, **kwargs):
+    #     super().__init__(*args, **kwargs)
+
+    def setHistData(self, histData:HistData):
+        self.histData = histData
+
+    def on_trial_begin(self, trial):
+        """Called at the beginning of a trial.
+        """
+        histData.latestTrialId = trial.trial_id
+        super().on_trial_begin(trial)
+
+
 log_dir = "logs/" + datetime.now().strftime('%Y-%m-%d_%H%M') + '/'
 tensorboard_cb = tf.keras.callbacks.TensorBoard(
     log_dir=log_dir,
@@ -623,17 +647,21 @@ tensorboard_cb = tf.keras.callbacks.TensorBoard(
     write_graph=True,
     update_freq='batch')
 
-hyperModel = MyHyperModel()
 
-tuner = kt.RandomSearch(
+histData = HistData()
+hyperModel = MyHyperModel()
+hyperModel.setHistData(histData)
+
+tuner = MyRandomTuner(
     hypermodel=hyperModel,
     objective=kt.Objective("val_fitness", direction="max"),
-    max_trials=40,
+    max_trials=10,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
     directory="keras_tuner",
     project_name="fortune_test",
 )
+tuner.setHistData(histData)
 
 tuner.search_space_summary()
 
@@ -646,22 +674,38 @@ print(f'Tuning Time (h:m:s)= {SecToHMS(r.trainTime)}.  {r.trainTime:.1f}s')
 printmd("## keras tuner done")
 
 #tuner.results_summary(). # This is very poorly formatted
-
+#%%
 # PRINT RESULTS
 # Keras tuner results into pandas
-trials = tuner.oracle.get_best_trials(9999)
-dfData = [copy.deepcopy(t.hyperparameters.values) for t in trials]
-for i, row in enumerate(dfData):
-    row['rank'] = i
-    row['score'] = trials[i].score
-    row['id'] = trials[i].trial_id
+dfData = []
+metrics_max = ['val_fitness', 'fitness', 'val_score_sq_any', 'score_sq_any']
+score_metric = 'val_fitness' # The metric name that is the objective. Assumed maximized
+for idx, trial in enumerate(histData.allHist):
+    d = {}
+    d['idx'] = idx
+    d['trial_id'] = trial['id']
+    d.update(trial['hp']) # add hyperparameters
+    # Add metrics
+    d['score'] = np.max(trial['history'][score_metric])
+    d['best_epoch'] = np.argmax(trial['history'][score_metric])
+    d['val_penalty_at_best'] = trial['history']['val_penalty'][d['best_epoch']]
+    for metric in metrics_max:
+        d['max_' + metric] = np.max(trial['history'][metric])
+    dfData.append(d)
 
 df = pd.DataFrame(dfData)
-df.set_index('id')
+df.set_index('idx')
 print(df)
 
+#%%
+# Plot train metrics of the best performing
+best_trial_idx = df.loc[df['score'].idxmax(),'idx']
+NeuralNet.PlotTrainMetrics(histData.allHist[best_trial_idx]['history'])
+
+
+
 # Plot tuner results
-hpNames = trials[0].hyperparameters.values.keys()
+hpNames = histData.allHist[0]['hp'].keys()
 fig, axs = plt.subplots(len(hpNames), 1, figsize=(r.config['plotWidth'] , 4 * len(hpNames)))
 if len(hpNames) == 1:
     axs = [axs]
@@ -674,4 +718,4 @@ for ax, hpName in zip(axs, hpNames):
     ax.grid()
 plt.show()
 
-
+# TODO add trendlines

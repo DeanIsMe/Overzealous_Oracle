@@ -249,7 +249,7 @@ def _CalcIndices(tMax, dataRatios, exclude):
 
 
 #==========================================================================
-def PlotTrainMetrics(r, axIn=None, legend=True):
+def PlotTrainMetrics(trainHistory, axIn=None, legend=True):
     #Plot Training
     if axIn is None:
         fig, ax = plt.subplots()
@@ -257,7 +257,7 @@ def PlotTrainMetrics(r, axIn=None, legend=True):
     else:
         ax = axIn
 
-    dataPoints = len(r.trainHistory['loss'])
+    dataPoints = len(list(trainHistory.values())[0])
     maxY = -9e9
     minY = 9e9
     
@@ -267,24 +267,24 @@ def PlotTrainMetrics(r, axIn=None, legend=True):
                   'ls':'-', 'color':'k', 'lw':1})
 
     lines.append({'label':'TrainScoreAny',
-                  'data':r.trainHistory['score_sq_any'],
+                  'data':trainHistory['score_sq_any'],
                   'ls':':', 'color':'C0', 'lw':2.5})
     lines.append({'label':'TrainPenalty',
-                  'data':r.trainHistory['penalty'],
+                  'data':trainHistory['penalty'],
                   'ls':'--', 'color':'C0', 'lw':1.5})
     lines.append({'label':'TrainFitness',
-                  'data':r.trainHistory['fitness'],
+                  'data':trainHistory['fitness'],
                   'ls':'-', 'color':'C0', 'lw':1.5})
 
 
     lines.append({'label':'ValScoreAny',
-                  'data':r.trainHistory['val_score_sq_any'],
+                  'data':trainHistory['val_score_sq_any'],
                   'ls':':', 'color':'C1', 'lw':2.5})
     lines.append({'label':'ValPenalty',
-                  'data':r.trainHistory['val_penalty'],
+                  'data':trainHistory['val_penalty'],
                   'ls':'--', 'color':'C1', 'lw':1.5})
     lines.append({'label':'ValFitness',
-                  'data':r.trainHistory['val_fitness'],
+                  'data':trainHistory['val_fitness'],
                   'ls':'-', 'color':'C1', 'lw':1.5})
 
     handles = []
@@ -637,7 +637,7 @@ def TrainNetwork(r, inData, outData, final=True, plotMetrics=True):
             r.modelEpoch = checkpointCb.bestEpoch
     
     if plotMetrics:
-        PlotTrainMetrics(r)
+        PlotTrainMetrics(r.trainHistory)
 
     return
 
