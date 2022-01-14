@@ -29,57 +29,60 @@ class FitnessCb(tf.keras.callbacks.Callback):
         pass
     
     
-    def setup(self, inData, outTarget, neutralTrainSqErr, neutralValSqErr, neutralTrainAbsErr, neutralValAbsErr):
-        # inData covers all of the time steps of outData, PLUS some earlier time steps
+    def setup(self, trainX, trainY, valX, valY, neutralTrainSqErr, neutralValSqErr, neutralTrainAbsErr, neutralValAbsErr):
+        # valX covers all of the time steps of outData, PLUS some earlier time steps
         # these earlier timesteps are used for building state
-        self.inData = inData # The input data that will be used for validation
-        self.outTarget = np.array(outTarget) # The target output. A perfect prediction model would predict these values
-        self.targetSize = outTarget.size # Number of points
-        self.targetTimeSteps = outTarget.shape[-2]
 
         self.neutralTrainAbsErr = neutralTrainAbsErr # train error if output was 'always neutral'
-        self.neutralTrainSqErr = neutralTrainSqErr # train error if output was 'always neutral'
+        self.neutralTrainSqErr = neutralTrainSqErr # train squared error if output was 'always neutral'
         self.neutralValAbsErr = neutralValAbsErr
         self.neutralValSqErr = neutralValSqErr
         
         # Determine the thresholds for penalising lack of movement
         # This is to avoid uneventful results that don't do anything
-        self.dynamismTarget = np.mean(np.abs(outTarget[:, :-10, :] - outTarget[:, 10:, :]))
-
+        self.trainDynamismTarget = np.mean(np.abs(trainY[:, :-10, :] - trainY[:, 10:, :]))
+        self.valDynamismTarget = np.mean(np.abs(valY[:, :-10, :] - valY[:, 10:, :]))
 
            
     #==========================================================================
     def on_epoch_end(self, epoch, logs={}):
-        fitness = 1/logs['val_score_sq_any']
-        penalty = 1. # fitness is multiplied by this penalty
-        
-        # Penalise predictions that don't vary across the time series
-        # dynamismRatio is how 'dynamic' the prediction is compared to the target output
-        dynamismRatio = logs['val_dynamism'] / self.dynamismTarget
-
-        # CONSTANTS
-        upperR = 0.25 # above this, there's no penalisation
-        lowerR = 0.1 # Below this, the penalty is a maximum
-        penaltyLower = 0.01 # Max penalty (scaler)
-        penaltyUpper = 1. # Always 1
-
-        debug = 0
-        if debug: print(f"DynamismRatio = {dynamismRatio:7.5f}", end='')
-        if dynamismRatio < upperR:
-            pos = (dynamismRatio - lowerR) / (upperR - lowerR) # 0 to 1
-            penalty = (pos) * (penaltyUpper - penaltyLower) + penaltyLower
-            penalty = np.clip(penalty, penaltyLower, penaltyUpper)
-            fitness *= penalty
-            if debug: print(f" penalty = {penalty:5f}")
-        if debug: print('') # new line
-        
-        logs['fitness'] = fitness # for choosing the best model
-        logs['penalty'] = penalty
-
+        # Simple scores
         logs['train_score_abs'] = self.neutralTrainAbsErr / logs['mean_absolute_error']
         logs['val_score_abs'] = self.neutralValAbsErr / logs['val_mean_absolute_error']
         logs['train_score_sq'] = self.neutralTrainSqErr / logs['mean_squared_error']
         logs['val_score_sq'] = self.neutralValSqErr / logs['val_mean_squared_error']
+
+        # PENALTY & FITNESS
+        # CONSTANTS
+        UPPER_R = 0.25 # above this, there's no penalisation
+        LOWER_R = 0.1 # Below this, the penalty is a maximum
+        PENALTY_LOWER = 0.01 # Max penalty (scaler)
+        PENALTY_UPPER = 1. # Always 1
+        
+        # Penalise predictions that don't vary across the time series
+
+        def CalcPenalty(dynamismRatio):
+            # dynamismRatio is how 'dynamic' the prediction is compared to the target output
+            # return penalty. fitness is multiplied by this penalty
+            if dynamismRatio >= UPPER_R:
+                return 1.0
+
+            pos = (dynamismRatio - LOWER_R) / (UPPER_R - LOWER_R) # 0 to 1
+            penalty = (pos) * (PENALTY_UPPER - PENALTY_LOWER) + PENALTY_LOWER
+            penalty = np.clip(penalty, PENALTY_LOWER, PENALTY_UPPER)
+            return penalty
+            
+        logs['penalty'] = CalcPenalty(trainDynamismRatio:= logs['dynamism'] / self.trainDynamismTarget)
+        logs['val_penalty'] = CalcPenalty(valDynamismRatio:= logs['val_dynamism'] / self.valDynamismTarget)
+
+        logs['fitness'] = logs['score_sq_any'] * logs['penalty']
+        logs['val_fitness'] = logs['val_score_sq_any'] * logs['val_penalty']
+       
+        debug = 0
+        if debug: print(f"valDynamismRatio   = {valDynamismRatio:7.5f},  valPenalty = {logs['val_penalty']:5f}")
+        if debug: print(f"trainDynamismRatio = {trainDynamismRatio:7.5f},  trainPenalty = {logs['penalty']:5f}")
+
+
 
 
 #==========================================================================
@@ -109,7 +112,7 @@ class CheckpointCb(tf.keras.callbacks.Callback):
     #==========================================================================
     def on_epoch_end(self, epoch, logs={}):
 
-        fitness = logs['fitness']
+        fitness = logs['val_fitness']
 
         # Check if this is the best result
         bestResult = False
@@ -167,7 +170,7 @@ class PrintoutCb(tf.keras.callbacks.Callback):
 
         def PrintHeaders():
             # Headers for the text table printed during training
-            print(f"Epoch TrainSqSc ValSqSc TrainScAny ValScAny Penalty Fitness ProcTime Remaining")
+            print(f"Epoch TrainSqSc TrainScAny ValSqSc ValScAny ValPenalty ValFitness ProcTime Remaining")
 
 
         # Epoch printout
@@ -179,12 +182,11 @@ class PrintoutCb(tf.keras.callbacks.Callback):
                  #f"Penalty= {penalty:5.3f} {' - New best! ' if bestResult else ''}")
             print(f"{epoch:5} " +
             f"{logs['train_score_sq']:9.3f} " +
-            f"{logs['val_score_sq']:7.3f} " +
             f"{logs['score_sq_any']:10.3f} " +
+            f"{logs['val_score_sq']:7.3f} " +
             f"{logs['val_score_sq_any']:8.3f} " +
-            f"{logs['penalty']:7.3f} " +
-            f"{logs['fitness']:7.3f} " +
-            #f"{logs['penalty']:7.3f} " +
+            f"{logs['val_penalty']:10.3f} " +
+            f"{logs['val_fitness']:10.3f} " +
             f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
             f"{' - New best! ' if logs['newBest'] else ''}")
             self.printCount += 1
@@ -247,7 +249,7 @@ def _CalcIndices(tMax, dataRatios, exclude):
 
 
 #==========================================================================
-def PlotTrainMetrics(r, axIn=None, plotAbs=True, legend=True):
+def PlotTrainMetrics(r, axIn=None, legend=True):
     #Plot Training
     if axIn is None:
         fig, ax = plt.subplots()
@@ -262,29 +264,32 @@ def PlotTrainMetrics(r, axIn=None, plotAbs=True, legend=True):
     lines = []
     lines.append({'label':'Neutral',
                   'data':np.array([1.0] * dataPoints),
-                  'ls':'-', 'color':'k'})
+                  'ls':'-', 'color':'k', 'lw':1})
 
-    lines.append({'label':'TrainSq',
-                  'data':r.trainHistory['train_score_sq'],
-                  'ls':'-', 'color':'C0'})
-    lines.append({'label':'ValSq',
-                  'data':r.trainHistory['val_score_sq'],
-                  'ls':'-', 'color':'C1'})
-    if plotAbs:
-        lines.append({'label':'TrainScoreSqAny',
-                    'data':r.trainHistory['score_sq_any'],
-                    'ls':':', 'color':'C0'})
-        lines.append({'label':'ValScoreSqAny',
-                    'data':r.trainHistory['val_score_sq_any'],
-                    'ls':':', 'color':'C1'})
-    
-    lines.append({'label':'Fitness',
+    lines.append({'label':'TrainScoreAny',
+                  'data':r.trainHistory['score_sq_any'],
+                  'ls':':', 'color':'C0', 'lw':2.5})
+    lines.append({'label':'TrainPenalty',
+                  'data':r.trainHistory['penalty'],
+                  'ls':'--', 'color':'C0', 'lw':1.5})
+    lines.append({'label':'TrainFitness',
                   'data':r.trainHistory['fitness'],
-                  'ls':'-', 'color':'C2'})
-  
+                  'ls':'-', 'color':'C0', 'lw':1.5})
+
+
+    lines.append({'label':'ValScoreAny',
+                  'data':r.trainHistory['val_score_sq_any'],
+                  'ls':':', 'color':'C1', 'lw':2.5})
+    lines.append({'label':'ValPenalty',
+                  'data':r.trainHistory['val_penalty'],
+                  'ls':'--', 'color':'C1', 'lw':1.5})
+    lines.append({'label':'ValFitness',
+                  'data':r.trainHistory['val_fitness'],
+                  'ls':'-', 'color':'C1', 'lw':1.5})
+
     handles = []
     for line in lines:
-        lx, = ax.plot(line['data'], label=line['label'], linestyle=line['ls'], color=line['color'])
+        lx, = ax.plot(line['data'], label=line['label'], linestyle=line['ls'], color=line['color'], lw=line['lw'])
         handles.append(lx)
         maxY = max(maxY, max(line['data']))
         minY = min(minY, min(line['data']))
@@ -552,16 +557,16 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
     trainX = [arr[:,r.tInd['train'],:] for arr in inData]
     trainY = outData[:, r.tInd['train']]
 
-    r.neutralTrainAbsErr = np.sum(np.abs(trainY)) / trainY.size
-    r.neutralValAbsErr = np.sum(np.abs(valY)) / valY.size
-    r.neutralTrainSqErr = np.sum(np.abs(trainY)**2) / trainY.size
-    r.neutralValSqErr = np.sum(np.abs(valY)**2) / valY.size
+    r.neutralTrainAbsErr = np.mean(np.abs(trainY))
+    r.neutralValAbsErr = np.mean(np.abs(valY))
+    r.neutralTrainSqErr = np.mean(np.abs(trainY)**2)
+    r.neutralValSqErr = np.mean(np.abs(valY)**2)
 
     #Callbacks
     callbacks = []
 
     fitnessCb = FitnessCb()
-    fitnessCb.setup(valX, valY, r.neutralTrainSqErr, r.neutralValSqErr, r.neutralTrainAbsErr, r.neutralValAbsErr)
+    fitnessCb.setup(trainX, trainY, valX, valY, r.neutralTrainSqErr, r.neutralValSqErr, r.neutralTrainAbsErr, r.neutralValAbsErr)
     callbacks.append(fitnessCb)
 
     checkpointCb = CheckpointCb()
@@ -662,11 +667,10 @@ def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 
     # Trial each model by a small amount of training
     epochBackup = r.config['epochs']
     r.config['epochs'] = trialEpochs
-    lossTrain = np.zeros((candidates))
-    lossVal = np.zeros((candidates))
+    fitnessTrain = np.zeros((candidates))
+    fitnessVal = np.zeros((candidates))
     trainGradSum = np.zeros((candidates))
     valGradSum = np.zeros((candidates))
-    fitness = np.zeros((candidates))
     for i in range(candidates):
         print('\n************************************')
         printmd(f'Training candidate model **{i}** out of {candidates}')
@@ -675,8 +679,8 @@ def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 
         TrainNetwork(r, inData, outData, final=False, plotMetrics=False)
         trainHist[i] = r.trainHistory
 
-        lossTrain[i] = r.trainHistory['mean_squared_error'][-1]
-        lossVal[i] = r.trainHistory['val_mean_squared_error'][-1]
+        fitnessTrain[i] = r.trainHistory['fitness'][-1]
+        fitnessVal[i] = r.trainHistory['val_fitness'][-1]
         # gradSum is a sum of the last 5 gradients (from the last 6 values)
         # of the log of the loss.
         # Should be negative. More negative = better
@@ -688,32 +692,32 @@ def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 
   
     # PICK THE BEST MODEL
     # Higher score = better
-    scores = pd.DataFrame()
-    scores['train'] = lossTrain.min()/lossTrain # 0 to 1 (1 being the best candidate)
-    scores['val'] = lossVal/lossVal.max() # 0 to 1 (1 being the best candidate)
-    # For gradient scores, 1 is the top score, and it scales down from there
+    rating = pd.DataFrame()
+    rating['train'] = fitnessTrain / fitnessTrain.max() # 0 to 1 (1 being the best candidate)
+    rating['val'] = fitnessVal / fitnessVal.max() # 0 to 1 (1 being the best candidate)
+    # For gradient scores, 1 is the top rating, and it scales down from there
     # The amount that it drops is determined by 
 
     # Method prior to 2021-11-07:
     # trainGradScale = np.abs(np.mean(np.log(lossTrain)))
     # temp = trainGradSum / trainGradScale * 8
-    # scores['trainGrad'] = np.clip(temp.min()-temp+1, -1, 1)
+    # rating['trainGrad'] = np.clip(temp.min()-temp+1, -1, 1)
 
-    scores['trainGrad'] = np.clip(-(trainGradSum / np.abs(trainGradSum.min())), -1, 1)
-    scores['valGrad'] = np.clip(-(valGradSum / np.abs(valGradSum.min())), -1, 1)
+    rating['trainGrad'] = np.clip(-(trainGradSum / np.abs(trainGradSum.min())), -1, 1)
+    rating['valGrad'] = np.clip(-(valGradSum / np.abs(valGradSum.min())), -1, 1)
 
     print('************************************')
-    printmd('### All candidate model scores:')
+    printmd('### All candidate model ratings:')
 
-    # Weight each of the scores
-    scores['total'] = scores['train'] * 1 \
-        + scores['val'] * 2 \
-        + scores['trainGrad'] * 0.5 \
-        + scores['valGrad'] * 0.5
+    # Weight each of the criteria
+    rating['total'] = rating['train'] * 1 \
+        + rating['val'] * 2 \
+        + rating['trainGrad'] * 0.5 \
+        + rating['valGrad'] * 0.5
     
-    print(scores)
+    print(rating)
               
-    bestI = scores['total'].argmax()
+    bestI = rating['total'].argmax()
     printmd('**Chose candidate model: {}**'.format(bestI))
     printmd('**********************************************************************************')
     

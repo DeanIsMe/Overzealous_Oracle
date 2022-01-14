@@ -196,8 +196,8 @@ r.config = GetConfig()
 
 
 r.coinList = ['BTC', 'ETH']
-r.numHours = 24*365*5
-r.config['epochs'] = 8
+r.numHours = 24*365*1
+r.config['epochs'] = 16
 r.config['revertToBest'] = False
 
 
@@ -397,7 +397,7 @@ for idx1 in range(bat1Len):
         ax = getAx(idx1, idx2)
         r = results[idx2][idx1] # Pointer for brevity
         
-        (thisMaxY, thisMinY) = PlotTrainMetrics(r, ax, plotAbs=False, legend=((idx1+idx2)==0))
+        (thisMaxY, thisMinY) = PlotTrainMetrics(r, ax, legend=((idx1+idx2)==0))
         maxY = max(maxY, thisMaxY)
         minY = min(minY, thisMinY)
         
@@ -627,7 +627,7 @@ hyperModel = MyHyperModel()
 
 tuner = kt.RandomSearch(
     hypermodel=hyperModel,
-    objective=kt.Objective("val_score_sq_any", direction="max"),
+    objective=kt.Objective("val_fitness", direction="max"),
     max_trials=40,
     executions_per_trial=1, # number of attempts with the same settings
     overwrite=True,
