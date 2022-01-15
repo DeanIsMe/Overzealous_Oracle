@@ -542,6 +542,7 @@ class MyHyperModel(kt.HyperModel):
         self.histData = histData
 
     def build(self, hp):
+        r.config = copy.deepcopy(baseConfig) # avoid changing the original
         # output range
         # outRangeStart = hp.Int('outRangeStart', min_value=1, max_value=144, sampling='log')
         # r.config['outputRanges'] = [[outRangeStart, outRangeStart*2]]
@@ -700,9 +701,10 @@ tensorboard_cb = tf.keras.callbacks.TensorBoard(
 
 histData = HistData()
 hyperModel = MyHyperModel()
+baseConfig = r.config
 hyperModel.setHistData(histData)
 
-if 1:
+if 0:
     printmd("### Using Random tuner")
     tuner = MyRandomTuner(
         hypermodel=hyperModel,
@@ -742,7 +744,7 @@ printmd("## keras tuner done")
 
 #tuner.results_summary(). # This is very poorly formatted
 
-# KERAS TUNER: PRINT RESULTS
+# KERAS TUNER: GET RESULTS INTO DATAFRAME
 # Keras tuner results into pandas
 dfData = []
 metrics_max = ['val_fitness', 'fitness', 'val_score_sq_any', 'score_sq_any']
@@ -772,8 +774,8 @@ filehandler = open(save_dir + "trials_histData.pickle", 'wb')
 pickle.dump(histData, filehandler)
 filehandler.close()
 
+# KERAS TUNER: PLOT RESULTS
 # Plot tuner results
-
 from pandas.api.types import is_numeric_dtype
 hpNames = histData.allHist[0]['hp'].keys()
 colsToPlot = [hpName for hpName in hpNames if is_numeric_dtype(df[hpName])]
@@ -803,22 +805,28 @@ for ax, hpName in zip(axs, colsToPlot):
 plt.show()
 plt.savefig(save_dir + "plot_per_hyperparam.png")
 
+# KERAS TUNER: PRINT RESULTS
 # For the hyperparameters that aren't numerical, print out the averages for each
 colsToPrint = [hpName for hpName in hpNames if not is_numeric_dtype(df[hpName])]
 for col in colsToPrint:
     # Calculate the average score for each value
-    meanVals = {val : df.loc[df.loc[:,col] == val, 'score'].mean() for val in df.loc[:, col].unique()}
+    vals = np.sort(df.loc[:, col].unique())
+    meanVals = {val : df.loc[df.loc[:,col] == val, 'score'].mean() for val in vals}
     print(f"Avgs for  {col}:")
     for key in meanVals.keys():
-        print(f"{key:>15s} : {meanVals[key]:5.3f}")
+        print(f"{key:>15} : {meanVals[key]:5.3f}")
 
+df_sorted = df.sort_values('score', ascending=False)
+print("Best trials")
+df_sorted[:20]
+print("Worst trials")
+df_sorted[-20:]
 
 # %%
-# Keras tuner: For the best performing run, plot train metrics and test it
+# # KERAS TUNER: Plot trainMetrics and test for the best trial
 best_trial_idx = df.loc[df['score'].idxmax(),'idx']
 best_trial_id = df.loc[best_trial_idx, 'trial_id']
 NeuralNet.PlotTrainMetrics(histData.allHist[best_trial_idx]['history'])
-
 
 r = ModelResult()
 r.config = histData.allHist[best_trial_idx]['config']
@@ -840,3 +848,4 @@ if 0: # Retrain the network.
     NeuralNet.MakeNetwork(r)
     #NeuralNet.PrintNetwork(r)
     NeuralNet.TrainNetwork(r, inData, outData)
+# %%
