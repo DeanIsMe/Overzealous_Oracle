@@ -1,0 +1,176 @@
+# -*- coding: utf-8 -*-
+"""
+Cryptocurrency correlation analysis
+Created on Jan 29  2022
+@author: Dean
+
+How should I go about performing a correlation analysis?
+I could find tokens that are normally correlated, for the purpose
+of identifying when the correlation breaks (assuming it will later catch up).
+
+Conversely, I could look for some kind of time-delayed correlation,
+where 1 token moves AFTER another token does.
+"""
+
+#%% 
+# IMPORTS & SETUP
+
+# note that "matplotlib notebook" isn't working for me
+%matplotlib widget
+
+import os
+
+os.chdir(os.path.dirname(os.path.dirname(__file__)))
+print(f'Working directory is "{os.getcwd()}"')
+
+import numpy as np
+
+from DataTypes import ModelResult, printmd, SecToHMS
+from TestSequences import GetInSeq
+import InputData as indata
+import copy
+
+import datetime
+
+import matplotlib.pyplot as plt
+import time
+import Crypto_GetData as cgd
+import pickle
+from datetime import datetime
+import pandas as pd
+
+
+# Load the input data file
+#At this point, the stock data should have all gaps filled in
+if not 'dataLoader' in locals():
+    inDataFileName = './indata/2021-09-30_price_data_60m.pickle'
+    dataLoader = cgd.DataLoader(inDataFileName)
+    print('Loaded input file')
+
+class CorrConfig():
+    def __init__(corrCfg):
+        corrCfg.numHours = 24 * 365 * 1
+
+corrCfg = CorrConfig()
+
+# %%
+
+#dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours']) # a list of data frames
+pair_summary = dataLoader.GetPairsSummary()
+
+# Remove all pairs that don't have up to date data
+pair_summary = pair_summary[pair_summary.last_time == pair_summary.last_time.max()]
+
+# Keep only pairs that are paired with USD
+pair_summary = pair_summary[pair_summary['pair'].apply(lambda x: x[-3:] == 'usd' or x[-4:] == 'usdt')]
+
+# Keep only pairs that have the desired duration available
+pair_summary = pair_summary[pair_summary['dur_avail'] >= corrCfg.numHours * 3600]
+
+# Get the data for these pairs
+pair_list = list(pair_summary['pair'])
+
+pair_list = [p for p in pair_list if 'usdc' not in p]
+
+dfs = dataLoader.GetHourlyDfPairs(pair_list, corrCfg.numHours) # a list of data frames
+
+# Combine close data into single dataframe
+price_dict = {}
+for df in dfs:
+    price_dict[df.name] = df['close'].values
+
+# %%
+# Condition the prices data
+
+# Calculate divergence
+
+results=[]
+for steps_past in range(1,48):
+    #steps_past = 24
+    avg_steps = 3 # How many timesteps to average
+
+    avg_steps = min(avg_steps, steps_past)
+
+    offset = steps_past - avg_steps # <avg_steps> into the past are handled by the rolling window. Add this many extra steps to get to <max_steps_past>
+
+    class Timer():
+        def __init__(self):
+            self.start_time = time.perf_counter()
+
+        def start(self): # optional
+            elapsed = self.elapsed()
+        
+        def elapsed(self):
+            return time.perf_counter() - self.start_time
+        
+        def stop(self):
+            s = self.elapsed()
+            return s
+
+
+
+    t1 = Timer()
+
+    prices_avg = {}
+    for pair in price_dict:
+        # Use pandas average, because it supports a window that's right-aligned
+        # whereas numpy's window is center aligned
+        prices_avg[pair] = pd.Series(price_dict[pair]).rolling(window=avg_steps, min_periods=0, center=False).mean().values
+
+    dvg = {}
+    for pair in price_dict:
+        dvg[pair] = price_dict[pair][steps_past:] / prices_avg[pair][:-steps_past] - 1
+
+    # all together correlate method:
+    dvg_2d = np.stack(list(dvg.values()), axis=1)
+    pairs = list(dvg.keys())
+
+    corr = np.corrcoef(dvg_2d[steps_past:, :], dvg_2d[:-steps_past, :], rowvar=False)
+    # The above performs a lot of unnecessary correlations. Remove them
+    corr = corr[len(pairs):, :len(pairs)]
+
+    # Dataframe is better for printing
+    corr_df = pd.DataFrame(corr, columns=pairs, index=[p + f'_p{steps_past}' for p in pairs])
+    #print(f"numpy:{t1.stop()}")
+
+
+
+
+    if 0:
+        # pandas method of calculating correlation coefficients
+        # this is more processing-intensive and more complicated than numpy method,
+        # because pandas tries to align rows
+        prices_df = pd.DataFrame(price_dict)
+
+        dvg = pd.DataFrame()
+        for pair in prices_df.columns:
+            prices_avg = prices_df[pair].rolling(window=avg_steps, min_periods=0).mean()
+            dvg.loc[:,pair] = prices_df[pair].iloc[steps_past:].multiply(1 / prices_avg.values[:-steps_past])  - 1
+
+        
+        df_a = dvg.iloc[steps_past:,:]
+        df_b = dvg.iloc[:-steps_past,:]
+        df_a.reset_index(drop=True, inplace=True)
+        df_b.reset_index(drop=True, inplace=True)
+        df_b.columns = [col + f'_p{steps_past}' for col in df_b.columns]
+        corr_df = pd.concat([df_a, df_b], axis=1).corr()
+
+        # The above performs a lot of unnecessary correlations. Remove them
+        corr_df = corr.loc[df_b.columns, df_a.columns]
+
+
+    # Find the best results
+    best_idx = np.unravel_index(np.argmax(corr), corr.shape)
+    res_str = f"steps_past = {steps_past:5}. best corr = {corr[best_idx]:6.3f}.   {pairs[best_idx[0]]:8} & {pairs[best_idx[1]]:8}"
+    print(res_str)
+    results.append(res_str)
+
+
+
+# #%%
+# fig, ax = plt.subplots()
+# pair = 'ethusd'
+# ax.plot(prices_df[pair])
+# ax2 = ax.twinx()
+# ax2.plot(dvg[pair], color='orange')
+# %%

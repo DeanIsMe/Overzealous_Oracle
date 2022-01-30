@@ -22,7 +22,27 @@ class DataLoader:
         filehandler = open(filename, 'rb')
         self.package = pickle.load(filehandler)
         filehandler.close()
-    
+
+    #*******************************************************************************
+    def GetDurationAvailable(self, pair):
+        dur_avail = data[pair]['time'].iloc[-1] - data[pair]['time'].iloc[0]
+        return dur_avail
+
+    #*******************************************************************************
+    def GetPairsSummary(self):
+        data = self.package['data']
+        pairs = []
+        dur_avail = []
+        last_time = []
+        for pair in data:
+            pairs.append(pair)
+            dur_avail.append(data[pair]['time'].iloc[-1] - data[pair]['time'].iloc[0])
+            last_time.append(data[pair]['time'].iloc[-1])
+
+        df = pd.DataFrame({'pair':pairs, 'dur_avail':dur_avail, 'last_time':last_time})
+        return df
+
+
     #*******************************************************************************
     def GetHourlyDf(self, coins, num_hours, verbose=1):
         """Grab the hourly data from file, as a list of DataFrames
@@ -67,6 +87,45 @@ class DataLoader:
                 print(f'GetHourlyDf: No valid pair found for {coin} in file {self.filename}.')
                 print(f"max_rows_avail={max_rows_avail}. Wanted {num_hours} rows.")
                 raise
+        return dfs
+
+
+
+    #*******************************************************************************
+    def GetHourlyDfPairs(self, pairs, num_hours):
+        """Grab the hourly data from file, as a list of DataFrames
+
+        Args:
+            filename (str): the file to load from
+            pairs (list): a list of pairs to load
+            num_hours (int): the number of hours (data points) for each coin
+
+        Returns:
+            list: A list of DataFrames. 1 per coin
+        """
+        data = self.package['data']
+        # 'data' is a dictionary where the key indicates the trading pair
+        dfs = [] # Output is a list of dataframes
+
+        # For each coin, pick a pair and extract the desired time
+        for pair in pairs:
+            if not pair in data:
+                printmd(f'\n **ERROR!**', color="0xFF8888")
+                print(f'GetHourlyDfPairs: Pair {pair} not found in file {self.filename}.')
+            # Check the duration
+            dur_avail = data[pair]['time'].iloc[-1] - data[pair]['time'].iloc[0]
+            rows_avail = len(data[pair])
+            if rows_avail > num_hours:
+                # Sufficient duration. Go with it!
+                # Extract the relevant rows and save
+                # copy() to avoid SettingWithCopyWarning error
+                this_df = data[pair].iloc[-num_hours:].copy()
+                this_df.name = pair
+                dfs.append(this_df)
+            else:
+                printmd(f'\n **ERROR!**', color="0xFF8888")
+                print(f'GetHourlyDfPairs: Insufficient time available for pair {pair} in file {self.filename}.')
+                print(f"rows_avail={rows_avail}. Wanted {num_hours} rows.")
         return dfs
 
 # %%
