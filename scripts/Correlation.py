@@ -49,7 +49,8 @@ if not 'dataLoader' in locals():
 
 class CorrConfig():
     def __init__(corrCfg):
-        corrCfg.numHours = 24 * 365 * 1
+        corrCfg.numHours = int(24 * 365 * 0.3)
+        corrCfg.valNumHours = int(24 * 365 * 0.3)
 
 corrCfg = CorrConfig()
 
@@ -65,29 +66,29 @@ pair_summary = pair_summary[pair_summary.last_time == pair_summary.last_time.max
 pair_summary = pair_summary[pair_summary['pair'].apply(lambda x: x[-3:] == 'usd' or x[-4:] == 'usdt')]
 
 # Keep only pairs that have the desired duration available
-pair_summary = pair_summary[pair_summary['dur_avail'] >= corrCfg.numHours * 3600]
+totalHours = corrCfg.numHours + corrCfg.valNumHours
+pair_summary = pair_summary[pair_summary['dur_avail'] >= totalHours * 3600]
 
 # Get the data for these pairs
 pair_list = list(pair_summary['pair'])
 
 pair_list = [p for p in pair_list if 'usdc' not in p]
 
-dfs = dataLoader.GetHourlyDfPairs(pair_list, corrCfg.numHours) # a list of data frames
+dfs = dataLoader.GetHourlyDfPairs(pair_list, totalHours) # a list of data frames
 
-# Combine close data into single dataframe
+# Combine close data into single dict
 price_dict = {}
+price_dict_val = {}
 for df in dfs:
-    price_dict[df.name] = df['close'].values
+    price_dict[df.name] = df['close'].values[:corrCfg.numHours]
+    price_dict_val[df.name] = df['close'].values[-corrCfg.valNumHours:]
 
 # %%
-# Condition the prices data
+    
+def CalcCorr(price_dict, steps_past, avg_steps=3):
 
-# Calculate divergence
-
-results=[]
-for steps_past in range(1,48):
     #steps_past = 24
-    avg_steps = 3 # How many timesteps to average
+    # avg_steps: How many timesteps to average
 
     avg_steps = min(avg_steps, steps_past)
 
@@ -111,30 +112,23 @@ for steps_past in range(1,48):
 
     t1 = Timer()
 
-    prices_avg = {}
+    prices_smth = {}
     for pair in price_dict:
         # Use pandas average, because it supports a window that's right-aligned
         # whereas numpy's window is center aligned
-        prices_avg[pair] = pd.Series(price_dict[pair]).rolling(window=avg_steps, min_periods=0, center=False).mean().values
-
+        prices_smth[pair] = pd.Series(price_dict[pair]).rolling(window=avg_steps, min_periods=0, center=False).mean().values
+    
+    # Calculate divergence
     dvg = {}
     for pair in price_dict:
-        dvg[pair] = price_dict[pair][steps_past:] / prices_avg[pair][:-steps_past] - 1
+        dvg[pair] = price_dict[pair][steps_past:] / prices_smth[pair][:-steps_past] - 1
 
     # all together correlate method:
     dvg_2d = np.stack(list(dvg.values()), axis=1)
-    pairs = list(dvg.keys())
 
     corr = np.corrcoef(dvg_2d[steps_past:, :], dvg_2d[:-steps_past, :], rowvar=False)
     # The above performs a lot of unnecessary correlations. Remove them
-    corr = corr[len(pairs):, :len(pairs)]
-
-    # Dataframe is better for printing
-    corr_df = pd.DataFrame(corr, columns=pairs, index=[p + f'_p{steps_past}' for p in pairs])
-    #print(f"numpy:{t1.stop()}")
-
-
-
+    corr = corr[len(pair_list):, :len(pair_list)]
 
     if 0:
         # pandas method of calculating correlation coefficients
@@ -144,8 +138,8 @@ for steps_past in range(1,48):
 
         dvg = pd.DataFrame()
         for pair in prices_df.columns:
-            prices_avg = prices_df[pair].rolling(window=avg_steps, min_periods=0).mean()
-            dvg.loc[:,pair] = prices_df[pair].iloc[steps_past:].multiply(1 / prices_avg.values[:-steps_past])  - 1
+            prices_smth = prices_df[pair].rolling(window=avg_steps, min_periods=0).mean()
+            dvg.loc[:,pair] = prices_df[pair].iloc[steps_past:].multiply(1 / prices_smth.values[:-steps_past])  - 1
 
         
         df_a = dvg.iloc[steps_past:,:]
@@ -158,14 +152,34 @@ for steps_past in range(1,48):
         # The above performs a lot of unnecessary correlations. Remove them
         corr_df = corr.loc[df_b.columns, df_a.columns]
 
+    return corr
 
+    
+
+results_str=[]
+results = {'steps_past':[], 'best_corr':[], 'val_corr':[], 'coin_A':[], 'coin_B':[]}
+for steps_past in range(1,48):
+    corr = CalcCorr(price_dict, steps_past)
+    corr_val = CalcCorr(price_dict_val, steps_past)
     # Find the best results
     best_idx = np.unravel_index(np.argmax(corr), corr.shape)
-    res_str = f"steps_past = {steps_past:5}. best corr = {corr[best_idx]:6.3f}.   {pairs[best_idx[0]]:8} & {pairs[best_idx[1]]:8}"
-    print(res_str)
-    results.append(res_str)
+    coin_a = pair_list[best_idx[0]]
+    coin_b = pair_list[best_idx[1]]
+    results['steps_past'].append(steps_past)
+    results['best_corr'].append(corr[best_idx])
+    results['val_corr'].append(corr_val[best_idx])
+    results['coin_A'].append(coin_a)
+    results['coin_B'].append(coin_b)
 
+    #res_str = f"steps_past = {steps_past:5}. best corr = {corr[best_idx]:6.3f}.   {coin_a:8} & {coin_b:8}"
+    #results_str.append(res_str)
 
+    # Print data (Dataframe is better for printing)
+    #corr_df = pd.DataFrame(corr, columns=pair_list, index=[p + f'_p{steps_past}' for p in pair_list])
+    #print(f"numpy:{t1.stop()}")
+
+print(f"Config: {corrCfg.numHours/24} days, validation {corrCfg.valNumHours/24} days")
+pd.DataFrame(results)
 
 # #%%
 # fig, ax = plt.subplots()
