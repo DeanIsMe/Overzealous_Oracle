@@ -10,6 +10,9 @@ of identifying when the correlation breaks (assuming it will later catch up).
 
 Conversely, I could look for some kind of time-delayed correlation,
 where 1 token moves AFTER another token does.
+I chose the latter.
+
+
 """
 
 #%% 
@@ -43,19 +46,19 @@ import pandas as pd
 # Load the input data file
 #At this point, the stock data should have all gaps filled in
 if not 'dataLoader' in locals():
-    inDataFileName = './indata/2021-09-30_price_data_60m.pickle'
+    inDataFileName = './indata/2021-12-31_price_data_60m.pickle'
     dataLoader = cgd.DataLoader(inDataFileName)
     print('Loaded input file')
 
 class CorrConfig():
     def __init__(corrCfg):
-        corrCfg.numHours = int(24 * 365 * 0.3)
-        corrCfg.valNumHours = int(24 * 365 * 0.3)
+        corrCfg.numHours = int(24 * 365 * 0.5)
+        corrCfg.valNumHours = int(24 * 365 * 0.1)
 
 corrCfg = CorrConfig()
 
 # %%
-
+# Collect data
 #dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours']) # a list of data frames
 pair_summary = dataLoader.GetPairsSummary()
 
@@ -84,7 +87,15 @@ for df in dfs:
     price_dict_val[df.name] = df['close'].values[-corrCfg.valNumHours:]
 
 # %%
-    
+"""Correlation analysis
+For every pair of coins, coinA and coinB,
+find the correlation between:
+    coinA's price movement over the previous X hours, and
+    coinB'a price movement over the following Y hours
+
+I always keep X=Y=steps_past
+"""
+
 def CalcCorr(price_dict, steps_past, avg_steps=3):
 
     #steps_past = 24
@@ -158,7 +169,7 @@ def CalcCorr(price_dict, steps_past, avg_steps=3):
 
 results_str=[]
 results = {'steps_past':[], 'best_corr':[], 'val_corr':[], 'coin_A':[], 'coin_B':[]}
-for steps_past in range(1,48):
+for steps_past in range(1,10):
     corr = CalcCorr(price_dict, steps_past)
     corr_val = CalcCorr(price_dict_val, steps_past)
     # Find the best results
@@ -178,9 +189,12 @@ for steps_past in range(1,48):
     #corr_df = pd.DataFrame(corr, columns=pair_list, index=[p + f'_p{steps_past}' for p in pair_list])
     #print(f"numpy:{t1.stop()}")
 
-print(f"Config: {corrCfg.numHours/24} days, validation {corrCfg.valNumHours/24} days")
-pd.DataFrame(results)
+results_df = pd.DataFrame(results)
 
+print(f"Config: {corrCfg.numHours/24} days, validation {corrCfg.valNumHours/24} days")
+print("Best of the best results:")
+print(results_df.iloc[results_df['val_corr'].argmax(), :])
+results_df
 # #%%
 # fig, ax = plt.subplots()
 # pair = 'ethusd'
@@ -188,3 +202,32 @@ pd.DataFrame(results)
 # ax2 = ax.twinx()
 # ax2.plot(dvg[pair], color='orange')
 # %%
+# Plot the result with the best validation coefficient
+best_steps_idx = np.argmax(results['val_corr'])
+steps_past=results['steps_past'][best_steps_idx]
+corr = CalcCorr(price_dict, steps_past)
+
+# Find the best results
+best_pair_idx = np.unravel_index(np.argmax(corr), corr.shape)
+coin_a = pair_list[best_pair_idx[0]]
+coin_b = pair_list[best_pair_idx[1]]
+
+fig, ax = plt.subplots(figsize=(12, 5))
+fig.tight_layout()
+
+def Scale(arr):
+    return arr / np.mean(arr)
+
+lines = []
+x0 = 1000
+x1 = x0 + 500
+lines += ax.plot(Scale(price_dict[coin_a][x0:x1]), label=coin_a)
+lines += ax.plot(Scale(price_dict[coin_b][x0:x1]), label=coin_b)
+ax.grid()
+ax.legend(handles=lines)
+ax.set_title(f"steps_past={steps_past}. val_corr={results['val_corr'][best_steps_idx]}")
+
+
+
+# %% 
+print('DONE')

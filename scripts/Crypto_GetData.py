@@ -618,13 +618,10 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.dirname(__file__)))
     print(f'Working directory is "{os.getcwd()}"')
 
-    filename = './indata/2021-09-30_price_data_60m.pickle'
-
+    #filename = './indata/2021-09-30_price_data_60m.pickle'
     #dfs = GetHourlyDf(filename, ['ETH'], 100)
 
-    ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT')
-
-    #FileDataScrubbing(filename)
+    ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT 2021 Q4')
 
 
 #%%
