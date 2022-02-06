@@ -46,14 +46,14 @@ import pandas as pd
 # Load the input data file
 #At this point, the stock data should have all gaps filled in
 if not 'dataLoader' in locals():
-    inDataFileName = './indata/2021-12-31_price_data_60m.pickle'
+    inDataFileName = './indata/2021-09-30_price_data_60m.pickle'
     dataLoader = cgd.DataLoader(inDataFileName)
     print('Loaded input file')
 
 class CorrConfig():
     def __init__(corrCfg):
-        corrCfg.numHours = int(24 * 365 * 0.5)
-        corrCfg.valNumHours = int(24 * 365 * 0.1)
+        corrCfg.numHours = int(24 * 365 * 0.3)
+        corrCfg.valNumHours = int(24 * 365 * 0.3)
 
 corrCfg = CorrConfig()
 
@@ -96,6 +96,7 @@ find the correlation between:
 I always keep X=Y=steps_past
 """
 
+
 def CalcCorr(price_dict, steps_past, avg_steps=3):
 
     #steps_past = 24
@@ -103,7 +104,7 @@ def CalcCorr(price_dict, steps_past, avg_steps=3):
 
     avg_steps = min(avg_steps, steps_past)
 
-    offset = steps_past - avg_steps # <avg_steps> into the past are handled by the rolling window. Add this many extra steps to get to <max_steps_past>
+    
 
     class Timer():
         def __init__(self):
@@ -120,8 +121,10 @@ def CalcCorr(price_dict, steps_past, avg_steps=3):
             return s
 
 
-
     t1 = Timer()
+
+    cmp_offset = steps_past - (avg_steps-1) # <avg_steps> into the past are handled by the rolling window. Add this many extra steps to get to <max_steps_past>
+    #cmp_offset = steps_past # !@#$
 
     prices_smth = {}
     for pair in price_dict:
@@ -132,7 +135,8 @@ def CalcCorr(price_dict, steps_past, avg_steps=3):
     # Calculate divergence
     dvg = {}
     for pair in price_dict:
-        dvg[pair] = price_dict[pair][steps_past:] / prices_smth[pair][:-steps_past] - 1
+        dvg[pair] = price_dict[pair][cmp_offset:] / prices_smth[pair][:-cmp_offset] - 1
+
 
     # all together correlate method:
     dvg_2d = np.stack(list(dvg.values()), axis=1)
@@ -169,7 +173,7 @@ def CalcCorr(price_dict, steps_past, avg_steps=3):
 
 results_str=[]
 results = {'steps_past':[], 'best_corr':[], 'val_corr':[], 'coin_A':[], 'coin_B':[]}
-for steps_past in range(1,10):
+for steps_past in range(1,25):
     corr = CalcCorr(price_dict, steps_past)
     corr_val = CalcCorr(price_dict_val, steps_past)
     # Find the best results
@@ -219,7 +223,7 @@ def Scale(arr):
     return arr / np.mean(arr)
 
 lines = []
-x0 = 1000
+x0 = 0
 x1 = x0 + 500
 lines += ax.plot(Scale(price_dict[coin_a][x0:x1]), label=coin_a)
 lines += ax.plot(Scale(price_dict[coin_b][x0:x1]), label=coin_b)
