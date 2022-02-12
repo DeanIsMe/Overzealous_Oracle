@@ -13,6 +13,8 @@ where 1 token moves AFTER another token does.
 I chose the latter.
 
 
+This analysis appears to have a pretty poor predictive power. Best case was a correlation
+coefficient of 0.17 in the validation data (from 0.24 in train data).
 """
 
 #%% 
