@@ -5,6 +5,7 @@ Created on Wed Aug 30 21:12:18 2017
 @author: Dean
 """
 
+from re import A
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -187,7 +188,7 @@ class PrintoutCb(tf.keras.callbacks.Callback):
             f"{logs['val_score_sq_any']:8.3f} " +
             f"{logs['val_penalty']:10.3f} " +
             f"{logs['val_fitness']:10.3f} " +
-            f"{(now - self.epochTimeHist[-2]):7.1f}s {SecToHMS(timeRemaining):>9s}" + 
+            f"{(now - self.epochTimeHist[-2]):7.2f}s {SecToHMS(timeRemaining):>9s}" + 
             f"{' - New best! ' if logs['newBest'] else ''}")
             self.printCount += 1
             self.prevPrintTime = now
@@ -463,67 +464,62 @@ def MakeNetwork(r):
     # Keras functional API
     # Input feeds (applied at different locations)
     feeds[FeedLoc.conv] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.conv])), name='conv_feed')
-    feeds[FeedLoc.lstm] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.lstm])), name='lstm_feed')
+    feeds[FeedLoc.rnn] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.rnn])), name='rnn_feed')
     feeds[FeedLoc.dense] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
     feed_lens = [feeds[i].shape[-1] for i in range(FeedLoc.LEN)]
 
     # Make conv layers
-    if feed_lens[FeedLoc.conv] > 0:
-        convLayers = []
-        for i in range(convCfg['layerCount']):
-            convLayers.append(MakeLayerModule('conv', feeds[FeedLoc.conv], out_width=convCfg['filters'][i],
-                kernel_size=convCfg['kernelSz'][i], dilation=convCfg['dilation'][i],
-                dropout_rate=r.config['dropout'], batch_norm=r.config['batchNorm'],
-                name= f"conv1d_{i}_{convCfg['dilation'][i]}x"))
+    if feed_lens[FeedLoc.conv] > 0 and r.config['convType'].lower() != 'none':
+        if r.config['convType'].lower() == 'filternet':
+            # FilterNet style conv
+            convLayers = []
+            for i in range(convCfg['layerCount']):
+                convLayers.append(MakeLayerModule('conv', feeds[FeedLoc.conv], out_width=convCfg['filters'][i],
+                    kernel_size=convCfg['kernelSz'][i], dilation=convCfg['dilation'][i],
+                    dropout_rate=r.config['dropout'], batch_norm=r.config['batchNorm'],
+                    name= f"conv1d_{i}_{convCfg['dilation'][i]}x"))
 
-        if convCfg['layerCount'] == 0:
-            this_layer = feeds[FeedLoc.conv]
-        elif convCfg['layerCount'] == 1:
-            this_layer = convLayers[0]
-        elif convCfg['layerCount'] > 1:
-            this_layer = layers.concatenate(convLayers, name="cat_conv")
+            if convCfg['layerCount'] == 0:
+                this_layer = feeds[FeedLoc.conv]
+            elif convCfg['layerCount'] == 1:
+                this_layer = convLayers[0]
+            elif convCfg['layerCount'] > 1:
+                this_layer = layers.concatenate(convLayers, name="cat_conv")
+        elif r.config['convType'].lower() == 'wavenet':
+            # WaveNet style conv
+            this_layer = MakeWaveNet(feeds[FeedLoc.conv], 
+                stack_count = r.config['wnStackCount'],
+                factor = r.config['wnFactor'],
+                module_count = r.config['wnModuleCount'],
+                out_width = r.config['wnWidth'])
+        else:
+            raise Exception("r.config['convType'] is unexpected")
 
         # Add LSTM feed
-        if feed_lens[FeedLoc.lstm] > 0:
-            this_layer = layers.concatenate([this_layer, feeds[FeedLoc.lstm]], name='cat_bottleneck')
+        if feed_lens[FeedLoc.rnn] > 0:
+            this_layer = layers.concatenate([this_layer, feeds[FeedLoc.rnn]], name='cat_bottleneck')
     else:
         # No convolutional input
-        this_layer = feeds[FeedLoc.lstm]
+        this_layer = feeds[FeedLoc.rnn]
 
-    # Bottleneck layer (to reduce size going to LSTM)
-    bnw = r.config['bottleneckWidth']
-    if bnw > 0:
-        this_layer = MakeLayerModule('dense', this_layer, out_width=bnw, dropout_rate=r.config['dropout'],
-            batch_norm=r.config['batchNorm'], name= f"bottleneck_{bnw}")
+    # RNN
+    if r.config['rnnType'].lower() != 'none':
+        # Bottleneck layer (to reduce size going to LSTM/GRU)
+        bnw = r.config['bottleneckWidth']
+        if bnw > 0:
+            this_layer = MakeLayerModule('dense', this_layer, out_width=bnw, dropout_rate=r.config['dropout'],
+                batch_norm=r.config['batchNorm'], name= f"bottleneck_{bnw}")
 
-    # LSTM layers
-    rnn_type = 'gru' if r.config['useGru'] else 'lstm'
-    for i, neurons in enumerate(r.config['lstmWidths']):
-        if neurons > 0:
-            this_layer = MakeLayerModule(rnn_type, this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
-                 batch_norm=r.config['batchNorm'], name= f'{rnn_type}_{i}_{neurons}')
-    
+        # LSTM/GRU layers
+        rnn_type = r.config['rnnType'].lower()
+        for i, neurons in enumerate(r.config['rnnWidths']):
+            if neurons > 0:
+                this_layer = MakeLayerModule(rnn_type, this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
+                    batch_norm=r.config['batchNorm'], name= f'{rnn_type}_{i}_{neurons}')
 
-    
     # Add dense input feed
-    # !@#$ dense_inputs = [this_layer]
-    dense_inputs = []
     if feed_lens[FeedLoc.dense] > 0:
-        dense_inputs.append(feeds[FeedLoc.dense])
-    
-    # WaveNet
-    if True:
-        wavenet_out = MakeWaveNet(feeds[FeedLoc.conv], 
-            stack_count = r.config['wnStackCount'],
-            factor = r.config['wnFactor'],
-            module_count = r.config['wnModuleCount'],
-            out_width = r.config['wnWidth'])
-        dense_inputs.append(wavenet_out)
-    
-    if len(dense_inputs) > 1:
-        this_layer = layers.concatenate(dense_inputs, name="cat_pre_dense")
-    else:
-        this_layer = dense_inputs[0]
+        this_layer = layers.concatenate([this_layer, feeds[FeedLoc.dense]])
 
     # Add any dense layers
     for i, neurons in enumerate(r.config['denseWidths']):

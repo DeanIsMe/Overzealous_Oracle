@@ -19,11 +19,11 @@ class FeedLoc():
     The value is the index in the list of inputs
     """
     conv = 2
-    lstm = 1
+    rnn = 1
     dense = 0
     null = -1
     LEN = 3
-    NAMES = {conv:'conv', lstm:'lstm', dense:'dense', null:'null'}
+    NAMES = {conv:'conv', rnn:'rnn', dense:'dense', null:'null'}
     
 
 class ModelResult():

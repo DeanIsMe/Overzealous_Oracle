@@ -65,7 +65,7 @@ def GetConfig():
     # =0.8 gives a huge reduction of outliers
     # =3 makes the data almost binary
     # 0.4 is a good tradeoff for minimising outliers
-    config['binarise'] = 0.2
+    config['binarise'] = 0
     
     # Ternarise
     # Transform towards a ternary buy/sell/neutral
@@ -84,26 +84,33 @@ def GetConfig():
     # ****************************
     # NEURAL NET (MODEL)
 
-    config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM to reduce the LSTM size
-    config['lstmWidths'] = [128] # Number of neurons in each LSTM layer. They're cascaded.
+    # SYSTEM 1 : convolution
+    config['convType'] = 'wavenet' # 'filternet' or 'wavenet' or 'none'
+    # FilterNet conv
     # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
     # The num of conv layers will be the greatest number of valid layers
     # If any parameter is empty ([] or 0), then there will be no convolutional layers
     config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
     config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
     config['convKernelSz'] = 10 # Kernel size per filter
+    config['convCascade'] = True # True:Series. False:Parallel. True:conv modules feed into eachother (with skip connections).  False:conv modules are in parallel - all have same input
 
-    # WaveNet
+    # WaveNet conv
     config['wnStackCount'] = 1 # repeat all module this many times
     config['wnFactor'] = 2 # the kernel_size and dilation factor (usually 2)
     config['wnModuleCount'] = 9 # Each module increases receptive filed by 'factor'. Total receptive field of a stack will be factor**modulecount
     config['wnWidth'] = 48 # Width of all dense and conv layers
 
+    # SYSTEM 2: RNN (LSTM/GRU)
+    config['rnnType'] = 'none' # 'lstm' or 'gru' or 'none'
+    config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM/GRU to reduce the size. 0 to disable.
+    config['rnnWidths'] = [128] # Number of neurons in each LSTM/GRU layer. They're cascaded. [] to disable
 
-    config['denseWidths'] = [] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
-    config['batchNorm'] = True
-    config['useGru'] = False # If true, swaps the LSTM with a GRU
+    # SYSTEM 3: Dense/Fully connected
+    config['denseWidths'] = [48] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
 
+    config['batchNorm'] = True # applies to conv, rnn, and dense layer modules
+    
 
     # ****************************
     # TRAINING DATA
@@ -139,12 +146,12 @@ def GetConfig():
     # flc[FeedLoc.conv].append('rsi')
     # flc[FeedLoc.conv].append('vix')
 
-    # flc[FeedLoc.lstm].append('ema')
-    # flc[FeedLoc.lstm].append('dvg')
-    # flc[FeedLoc.lstm].append('volume')
-    # flc[FeedLoc.lstm].append('logDiff')
-    # flc[FeedLoc.lstm].append('rsi')
-    # flc[FeedLoc.lstm].append('vix')
+    # flc[FeedLoc.rnn].append('ema')
+    # flc[FeedLoc.rnn].append('dvg')
+    # flc[FeedLoc.rnn].append('volume')
+    # flc[FeedLoc.rnn].append('logDiff')
+    # flc[FeedLoc.rnn].append('rsi')
+    # flc[FeedLoc.rnn].append('vix')
 
     # flc[FeedLoc.dense].append('ema')
     # flc[FeedLoc.dense].append('dvg')

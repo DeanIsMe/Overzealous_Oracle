@@ -195,19 +195,8 @@ r = ModelResult()
 r.config = GetConfig()
 
 
-r.config['epochs'] = 800
+r.config['epochs'] = 400
 r.config['revertToBest'] = False
-
-
-# !@#$ WaveNet
-r.config['bottleneckWidth'] = 0
-r.config['lstmWidths'] = []
-r.config['convFilters'] = [] # Number of filters per layer. List or scalar
-r.config['denseWidths'] = [128] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
-
-
-# !@#$
-
 
 
 dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours']) # a list of data frames
@@ -580,13 +569,13 @@ class MyHyperModel(kt.HyperModel):
         r.config['bottleneckWidth'] = hp.Int("bottleneckWidth", min_value = 8, max_value = 128)
         lstmStyle = hp.Int("lstmStyle", min_value = 0, max_value = 3)
         if lstmStyle == 0:
-            r.config['lstmWidths'] = []
+            r.config['rnnWidths'] = []
         elif lstmStyle == 1:
-            r.config['lstmWidths'] = [32]
+            r.config['rnnWidths'] = [32]
         elif lstmStyle == 2:
-            r.config['lstmWidths'] = [128]
+            r.config['rnnWidths'] = [128]
         elif lstmStyle == 3:
-            r.config['lstmWidths'] = [96, 48]
+            r.config['rnnWidths'] = [96, 48]
         
         convKernel = hp.Int("convKernel", min_value=0, max_value=3)
         if convKernel == 0:
