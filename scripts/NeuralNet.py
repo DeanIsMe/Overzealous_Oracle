@@ -249,10 +249,10 @@ def _CalcIndices(tMax, dataRatios, exclude):
 
 
 #==========================================================================
-def PlotTrainMetrics(trainHistory, axIn=None, legend=True):
+def PlotTrainMetrics(trainHistory, axIn=None, legend=True, plotWidth=7):
     #Plot Training
     if axIn is None:
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(plotWidth, 4))
         fig.tight_layout()
     else:
         ax = axIn
@@ -404,6 +404,7 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
 
     return this_layer
 
+
 #==========================================================================
 def mean_squared_error_any(y_true, y_pred):
     """Custom keras metric function
@@ -480,11 +481,11 @@ def MakeNetwork(r):
         elif convCfg['layerCount'] == 1:
             this_layer = convLayers[0]
         elif convCfg['layerCount'] > 1:
-            this_layer = layers.concatenate(convLayers)
+            this_layer = layers.concatenate(convLayers, name="cat_conv")
 
         # Add LSTM feed
         if feed_lens[FeedLoc.lstm] > 0:
-            this_layer = layers.concatenate([this_layer, feeds[FeedLoc.lstm]], name='concat_bottleneck')
+            this_layer = layers.concatenate([this_layer, feeds[FeedLoc.lstm]], name='cat_bottleneck')
     else:
         # No convolutional input
         this_layer = feeds[FeedLoc.lstm]
@@ -502,10 +503,28 @@ def MakeNetwork(r):
             this_layer = MakeLayerModule(rnn_type, this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
                  batch_norm=r.config['batchNorm'], name= f'{rnn_type}_{i}_{neurons}')
     
-    # Add dense input feed
-    if feed_lens[FeedLoc.dense] > 0:
-        this_layer = layers.concatenate([this_layer, feeds[FeedLoc.dense]])
+
     
+    # Add dense input feed
+    # !@#$ dense_inputs = [this_layer]
+    dense_inputs = []
+    if feed_lens[FeedLoc.dense] > 0:
+        dense_inputs.append(feeds[FeedLoc.dense])
+    
+    # WaveNet
+    if True:
+        wavenet_out = MakeWaveNet(feeds[FeedLoc.conv], 
+            stack_count = r.config['wnStackCount'],
+            factor = r.config['wnFactor'],
+            module_count = r.config['wnModuleCount'],
+            out_width = r.config['wnWidth'])
+        dense_inputs.append(wavenet_out)
+    
+    if len(dense_inputs) > 1:
+        this_layer = layers.concatenate(dense_inputs, name="cat_pre_dense")
+    else:
+        this_layer = dense_inputs[0]
+
     # Add any dense layers
     for i, neurons in enumerate(r.config['denseWidths']):
         if neurons > 0:
@@ -637,7 +656,7 @@ def TrainNetwork(r, inData, outData, final=True, plotMetrics=True):
             r.modelEpoch = checkpointCb.bestEpoch
     
     if plotMetrics:
-        PlotTrainMetrics(r.trainHistory)
+        PlotTrainMetrics(r.trainHistory, plotWidth=r.config['plotWidth'])
 
     return
 
@@ -856,3 +875,93 @@ class CustomModel(tf.keras.Model):
       else:
         return_metrics[metric.name] = result
     return return_metrics
+
+
+
+#==========================================================================
+def MakeWaveNetModule(layer_input, out_width:int, kernel_size:int, dilation:int, name:str=""):
+    # https://arxiv.org/pdf/1609.03499.pdf
+    #        |-> [gate]   -|        |-> 1x1 conv -> skip output
+    #        |             |-> (*) -|
+    # input -|-> [filter] -|        |-> 1x1 conv -|
+    #        |                                    |-> (+) -> dense output
+    #        |------------------------------------|
+
+    bias = False
+    this_layer = layer_input
+    conv_args = {
+        'filters' : out_width, # filter count = number of outputs
+        'kernel_size' : kernel_size, # size of all filters
+        'dilation_rate' : dilation, # factor in how far back to look
+        'use_bias' : bias, # Can experiment with this 
+        'padding' : 'causal', # causal; don't look into the future
+    }
+
+    # tanh (filter)
+    conv_args['name'] = f'{name}_conv_tanh'
+    conv_args['activation'] = 'tanh'
+    tanh = layers.Conv1D(**conv_args)(this_layer)
+
+    # sigm (gate)
+    conv_args['name'] = f'{name}_conv_sigm'
+    conv_args['activation'] = 'sigmoid'
+    sigm = layers.Conv1D(**conv_args)(this_layer)
+
+    # multiply
+    this_layer = layers.Multiply(name=f"{name}_mult")([tanh, sigm])
+
+    # skip
+    skip = layers.Dense(units=out_width, use_bias=bias, name=f"{name}_dense_skip")(this_layer)
+
+    # dense out
+    this_layer = layers.Dense(units=out_width, use_bias=bias, name=f"{name}_dense_res")(this_layer)
+    this_layer = layers.Add(name=f"{name}_res_add")([this_layer, layer_input])
+
+    return this_layer, skip
+
+#==========================================================================
+def MakeWaveNetStack(layer_input, factor:int, module_count:int, out_width:int, name:str=""):
+    """Make a WaveNet stack, which is a cascading group of WaveNet modules. Each module
+    has its dilation factor increased by factor
+
+    Args:
+        layer_input: [description]
+        factor (int): the kernel_size and dilation factor (usually 2)
+        module_count (int): Each module increases receptive filed by 'factor'. Total receptive field will be factor**modulecount
+        out_width (int): filter count
+        name ([type], optional): [description]. Defaults to None.
+
+    Returns:
+        this_layer, skips
+    """
+    this_layer = layer_input
+    skips = []
+    for i in range(module_count):
+        this_layer, skip_new = MakeWaveNetModule(this_layer, out_width=out_width, 
+        kernel_size=factor, dilation=factor**i, name=f"{name}_m{i}")
+        skips.append(skip_new)
+    
+    return this_layer, skips
+
+#==========================================================================
+def MakeWaveNet(layer_input, module_count:int, out_width:int, name:str="", stack_count:int=1, factor:int=2):
+    # Starts with "Causal Conv"
+    # "Causal Conv" is not well defined. I believe it's a 1x1 (aka Dense) to change the data width
+    this_layer = layers.Dense(units=out_width, use_bias=False, name=f"{name}wn_cc")(layer_input)
+
+    # Main body of WaveNet:
+    all_skips = []
+    for s in range(stack_count):
+        thisPre = f"{name}wn_s{s}" if stack_count > 1 else f"{name}wn"
+        this_layer, skips = MakeWaveNetStack(this_layer, factor=factor, 
+            module_count=module_count, out_width=out_width, name=thisPre)
+        all_skips += skips
+
+    receptive_field = stack_count * factor**module_count - (stack_count - 1)
+    print(f"WaveNet receptive field = {receptive_field}h. {receptive_field/24} days.")
+
+    # cap off a WaveNet network by summing the skip connections and adding relu
+    this_layer = layers.Add(name=f"{name}wn_sum_skip")(all_skips)
+    return layers.Activation('relu', name=f"{name}wn_act_relu")(this_layer)
+
+    # Note that there should also be after this: 1x1, relu, 1x1, softmax

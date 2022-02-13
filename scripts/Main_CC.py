@@ -195,8 +195,19 @@ r = ModelResult()
 r.config = GetConfig()
 
 
-r.config['epochs'] = 8
+r.config['epochs'] = 800
 r.config['revertToBest'] = False
+
+
+# !@#$ WaveNet
+r.config['bottleneckWidth'] = 0
+r.config['lstmWidths'] = []
+r.config['convFilters'] = [] # Number of filters per layer. List or scalar
+r.config['denseWidths'] = [128] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
+
+
+# !@#$
+
 
 
 dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours']) # a list of data frames
@@ -210,7 +221,7 @@ r.batchRunName = ''
 prunedNetwork = False # Pruned: generate multiple candidates and use the best
 if not prunedNetwork:
     NeuralNet.MakeNetwork(r)
-    #NeuralNet.PrintNetwork(r)
+    NeuralNet.PrintNetwork(r)
     NeuralNet.TrainNetwork(r, inData, outData)
 else:
     NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData)
@@ -382,7 +393,7 @@ for idx1 in range(bat1Len):
         ax = getAx(idx1, idx2)
         r = results[idx2][idx1] # Pointer for brevity
         
-        (thisMaxY, thisMinY) = PlotTrainMetrics(r.trainHistory, ax, legend=((idx1+idx2)==0))
+        (thisMaxY, thisMinY) = PlotTrainMetrics(r.trainHistory, ax, legend=((idx1+idx2)==0), plotWidth=r.config['plotWidth'])
         maxY = max(maxY, thisMaxY)
         minY = min(minY, thisMinY)
         
@@ -826,7 +837,7 @@ df_sorted[-20:]
 # # KERAS TUNER: Plot trainMetrics and test for the best trial
 best_trial_idx = df.loc[df['score'].idxmax(),'idx']
 best_trial_id = df.loc[best_trial_idx, 'trial_id']
-NeuralNet.PlotTrainMetrics(histData.allHist[best_trial_idx]['history'])
+NeuralNet.PlotTrainMetrics(histData.allHist[best_trial_idx]['history'], plotWidth=r.config['plotWidth'])
 
 r = ModelResult()
 r.config = histData.allHist[best_trial_idx]['config']
@@ -841,7 +852,7 @@ r.model.load_weights(tuner._get_checkpoint_fname(best_trial_id, best_trial_step)
 
 r.trainHistory = histData.allHist[best_trial_idx]['history']
 r.modelEpoch = df.loc[best_trial_idx, 'best_epoch']
-# NeuralNet.PlotTrainMetrics(r.trainHistory)
+# NeuralNet.PlotTrainMetrics(r.trainHistory, plotWidth=r.config['plotWidth'])
 NeuralNet.TestNetwork(r, prices, inData, outData)
 
 if 0: # Retrain the network. 

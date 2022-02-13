@@ -92,6 +92,14 @@ def GetConfig():
     config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
     config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
     config['convKernelSz'] = 10 # Kernel size per filter
+
+    # WaveNet
+    config['wnStackCount'] = 1 # repeat all module this many times
+    config['wnFactor'] = 2 # the kernel_size and dilation factor (usually 2)
+    config['wnModuleCount'] = 9 # Each module increases receptive filed by 'factor'. Total receptive field of a stack will be factor**modulecount
+    config['wnWidth'] = 48 # Width of all dense and conv layers
+
+
     config['denseWidths'] = [] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
     config['batchNorm'] = True
     config['useGru'] = False # If true, swaps the LSTM with a GRU
@@ -116,34 +124,34 @@ def GetConfig():
     # Note that a feature can be used at multiple feed locations
     flc = [[] for i in range(FeedLoc.LEN)]
 
-    # flc[FeedLoc.conv].append('ema')
-    # flc[FeedLoc.conv].append('dvg')
-    # flc[FeedLoc.conv].append('volume')
-    # flc[FeedLoc.conv].append('logDiff')
-    # flc[FeedLoc.conv].append('rsi')
-    # flc[FeedLoc.conv].append('vix')
-    
-    # Add everything everywhere
     flc[FeedLoc.conv].append('ema')
     flc[FeedLoc.conv].append('dvg')
     flc[FeedLoc.conv].append('volume')
     flc[FeedLoc.conv].append('logDiff')
     flc[FeedLoc.conv].append('rsi')
     flc[FeedLoc.conv].append('vix')
+    
+    # Add everything everywhere
+    # flc[FeedLoc.conv].append('ema')
+    # flc[FeedLoc.conv].append('dvg')
+    # flc[FeedLoc.conv].append('volume')
+    # flc[FeedLoc.conv].append('logDiff')
+    # flc[FeedLoc.conv].append('rsi')
+    # flc[FeedLoc.conv].append('vix')
 
-    flc[FeedLoc.lstm].append('ema')
-    flc[FeedLoc.lstm].append('dvg')
-    flc[FeedLoc.lstm].append('volume')
-    flc[FeedLoc.lstm].append('logDiff')
-    flc[FeedLoc.lstm].append('rsi')
-    flc[FeedLoc.lstm].append('vix')
+    # flc[FeedLoc.lstm].append('ema')
+    # flc[FeedLoc.lstm].append('dvg')
+    # flc[FeedLoc.lstm].append('volume')
+    # flc[FeedLoc.lstm].append('logDiff')
+    # flc[FeedLoc.lstm].append('rsi')
+    # flc[FeedLoc.lstm].append('vix')
 
-    flc[FeedLoc.dense].append('ema')
-    flc[FeedLoc.dense].append('dvg')
-    flc[FeedLoc.dense].append('volume')
-    flc[FeedLoc.dense].append('logDiff')
-    flc[FeedLoc.dense].append('rsi')
-    flc[FeedLoc.dense].append('vix')
+    # flc[FeedLoc.dense].append('ema')
+    # flc[FeedLoc.dense].append('dvg')
+    # flc[FeedLoc.dense].append('volume')
+    # flc[FeedLoc.dense].append('logDiff')
+    # flc[FeedLoc.dense].append('rsi')
+    # flc[FeedLoc.dense].append('vix')
 
     config['feedLoc'] = flc
 
@@ -170,6 +178,6 @@ def GetConfig():
     # ****************************
     # OTHER
 
-    config['plotWidth'] = 5
+    config['plotWidth'] = 9
 
     return config
