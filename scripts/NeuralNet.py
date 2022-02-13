@@ -468,16 +468,21 @@ def MakeNetwork(r):
     feeds[FeedLoc.dense] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
     feed_lens = [feeds[i].shape[-1] for i in range(FeedLoc.LEN)]
 
+    # SYSTEM 1 : convolution
     # Make conv layers
     if feed_lens[FeedLoc.conv] > 0 and r.config['convType'].lower() != 'none':
         if r.config['convType'].lower() == 'filternet':
             # FilterNet style conv
             convLayers = []
+            this_layer = feeds[FeedLoc.conv]
             for i in range(convCfg['layerCount']):
-                convLayers.append(MakeLayerModule('conv', feeds[FeedLoc.conv], out_width=convCfg['filters'][i],
+                convLayers.append(MakeLayerModule('conv', this_layer, out_width=convCfg['filters'][i],
                     kernel_size=convCfg['kernelSz'][i], dilation=convCfg['dilation'][i],
                     dropout_rate=r.config['dropout'], batch_norm=r.config['batchNorm'],
                     name= f"conv1d_{i}_{convCfg['dilation'][i]}x"))
+                if r.config['convCascade']:
+                    # Convolutional networks feed into eachother, with skip connections
+                    this_layer = convLayers[-1]
 
             if convCfg['layerCount'] == 0:
                 this_layer = feeds[FeedLoc.conv]
@@ -502,7 +507,7 @@ def MakeNetwork(r):
         # No convolutional input
         this_layer = feeds[FeedLoc.rnn]
 
-    # RNN
+    # SYSTEM 2: RNN (LSTM/GRU)
     if r.config['rnnType'].lower() != 'none':
         # Bottleneck layer (to reduce size going to LSTM/GRU)
         bnw = r.config['bottleneckWidth']
@@ -517,6 +522,7 @@ def MakeNetwork(r):
                 this_layer = MakeLayerModule(rnn_type, this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
                     batch_norm=r.config['batchNorm'], name= f'{rnn_type}_{i}_{neurons}')
 
+    # SYSTEM 3: Dense/Fully connected
     # Add dense input feed
     if feed_lens[FeedLoc.dense] > 0:
         this_layer = layers.concatenate([this_layer, feeds[FeedLoc.dense]])
