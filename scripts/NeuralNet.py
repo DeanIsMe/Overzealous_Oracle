@@ -13,6 +13,7 @@ import tensorflow as tf
 import tensorflow.keras.layers as layers
 import tensorflow.keras.models as models
 import tensorflow.keras.optimizers as optimizers
+import tensorflow.keras.regularizers as regularizers
 
 import pandas as pd
 import time
@@ -20,6 +21,42 @@ import os
 #from ClockworkRNN import CWRNN
 
 from DataTypes import printmd, SecToHMS, FeedLoc
+
+
+#==========================================================================
+class RegularizerDef:
+    """Defines parameters for a keras regularizer
+    This class exists to generate kernel regularizers concisely with make_reg
+    I COULD just re-use the same regularizer object, as suggested here:
+    # https://stackoverflow.com/a/58871203/3580080
+    But generating a new object each time is seen as better practice
+    """
+    def __init__(self, type, rate_1, rate_2):
+        """Give all parameters here
+        Args:
+            type (_type_): l1, l2, or l1_l2
+            factor_a (_type_): regularization rate for l1
+            factor_b (_type_): regularization rate for l2
+        """
+        self.type = type
+        self.rate_1 = rate_1
+        self.rate_2 = rate_2
+
+
+def make_reg(reg_def):
+    if reg_def is None:
+        return None
+    if reg_def.type is None:
+        return None
+    elif reg_def.type.lower() == 'l1':
+        return regularizers.l1(reg_def.rate_1)
+    elif reg_def.type.lower() == 'l2':
+        return regularizers.l2(reg_def.rate_2)
+    elif reg_def.type.lower() == 'l1_l2':
+        return regularizers.l1_l2(l1=reg_def.rate_1, l2=reg_def.rate_2)
+    else:
+        raise Exception(f"Invalid regularizer type: {reg_def.type}")
+
 
 #==========================================================================
 class FitnessCb(tf.keras.callbacks.Callback):
@@ -319,7 +356,7 @@ def PrepConvConfig(cfg):
     """
     convCfg = dict()
     convCfg['dilation'] = cfg['convDilation']
-    convCfg['filters']  = cfg['convFilters']  
+    convCfg['filters']  = cfg['convFilters']
     convCfg['kernelSz'] = cfg['convKernelSz']
 
     # Determine the number of convolutional layers
@@ -346,7 +383,8 @@ def PrepConvConfig(cfg):
 
 #==========================================================================
 def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0., 
-    kernel_size:int=None, dilation:int=None, stride:int=0, batch_norm:bool=True, name=None):
+    kernel_size:int=None, dilation:int=None, stride:int=0, 
+    batch_norm:bool=True, k_reg=None, name=None):
     # dropout
     # CNN or LSTM
     # avg pool with stride
@@ -356,7 +394,7 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
     if type.lower() == 'dense':
         if dropout_rate > 0.:
             this_layer = layers.Dropout(dropout_rate, name='do_' + name)(this_layer)
-        this_layer = layers.Dense(units=out_width, activation='relu', name=name)(this_layer)
+        this_layer = layers.Dense(units=out_width, kernel_regularizer=k_reg, activation='relu', name=name)(this_layer)
     elif type.lower() == 'conv':
         if dropout_rate > 0.:
             this_layer = layers.Dropout(dropout_rate, name='do_' + name)(this_layer)
@@ -368,6 +406,7 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
             'use_bias' : True, 
             'padding' : 'causal', # causal; don't look into the future
             'activation' : 'relu',
+            'kernel_regularizer' : k_reg,
             'name' : name
         }
         this_layer = layers.Conv1D(**conv_args)(this_layer)
@@ -378,6 +417,7 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
             'activation' : 'tanh',
             'stateful' : False,
             'return_sequences' : True, # I'm including output values for all time steps, so always true
+            'kernel_regularizer' : k_reg,
             'name' : name
         }
         this_layer = layers.LSTM(**lstm_args)(this_layer)
@@ -388,6 +428,7 @@ def MakeLayerModule(type:str, layer_input, out_width:int, dropout_rate:float=0.,
             'activation' : 'tanh',
             'stateful' : False,
             'return_sequences' : True, # I'm including output values for all time steps, so always true
+            'kernel_regularizer' : k_reg,
             'name' : name
         }
         this_layer = layers.GRU(**gru_args)(this_layer)
@@ -450,6 +491,8 @@ def dynamism(y_true, y_pred):
 def MakeNetwork(r):
     # Prep convolution config
     convCfg = PrepConvConfig(r.config)
+    
+    reg_def = RegularizerDef(r.config['regularizerType'], r.config['regularizationRateL1'], r.config['regularizationRateL2'])
 
     #Make a Neural Network
     if r.config['optimiser'].lower() == 'adam':
@@ -476,7 +519,7 @@ def MakeNetwork(r):
             convLayers = []
             this_layer = feeds[FeedLoc.conv]
             for i in range(convCfg['layerCount']):
-                convLayers.append(MakeLayerModule('conv', this_layer, out_width=convCfg['filters'][i],
+                convLayers.append(MakeLayerModule('conv', this_layer, k_reg=make_reg(reg_def), out_width=convCfg['filters'][i],
                     kernel_size=convCfg['kernelSz'][i], dilation=convCfg['dilation'][i],
                     dropout_rate=r.config['dropout'], batch_norm=r.config['batchNorm'],
                     name= f"conv1d_{i}_{convCfg['dilation'][i]}x"))
@@ -496,7 +539,8 @@ def MakeNetwork(r):
                 stack_count = r.config['wnStackCount'],
                 factor = r.config['wnFactor'],
                 module_count = r.config['wnModuleCount'],
-                out_width = r.config['wnWidth'])
+                out_width = r.config['wnWidth'],
+                k_reg_def=reg_def)
         else:
             raise Exception("r.config['convType'] is unexpected")
 
@@ -512,14 +556,14 @@ def MakeNetwork(r):
         # Bottleneck layer (to reduce size going to LSTM/GRU)
         bnw = r.config['bottleneckWidth']
         if bnw > 0:
-            this_layer = MakeLayerModule('dense', this_layer, out_width=bnw, dropout_rate=r.config['dropout'],
+            this_layer = MakeLayerModule('dense', this_layer, out_width=bnw, k_reg=make_reg(reg_def), dropout_rate=r.config['dropout'],
                 batch_norm=r.config['batchNorm'], name= f"bottleneck_{bnw}")
 
         # LSTM/GRU layers
         rnn_type = r.config['rnnType'].lower()
         for i, neurons in enumerate(r.config['rnnWidths']):
             if neurons > 0:
-                this_layer = MakeLayerModule(rnn_type, this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
+                this_layer = MakeLayerModule(rnn_type, this_layer, out_width=neurons, k_reg=make_reg(reg_def), dropout_rate=r.config['dropout'],
                     batch_norm=r.config['batchNorm'], name= f'{rnn_type}_{i}_{neurons}')
 
     # SYSTEM 3: Dense/Fully connected
@@ -530,11 +574,12 @@ def MakeNetwork(r):
     # Add any dense layers
     for i, neurons in enumerate(r.config['denseWidths']):
         if neurons > 0:
-            this_layer = MakeLayerModule('dense', this_layer, out_width=neurons, dropout_rate=r.config['dropout'],
+            this_layer = MakeLayerModule('dense', this_layer, out_width=neurons, k_reg=make_reg(reg_def), dropout_rate=r.config['dropout'],
                 batch_norm=r.config['batchNorm'], name= f'dense_{i}_{neurons}')
 
     # Output (dense) layer
-    main_output = layers.Dense(units=r.outFeatureCount, activation='linear', name='final_output')(this_layer)
+    main_output = layers.Dense(units=r.outFeatureCount, activation='linear', name='final_output',
+    kernel_regularizer=make_reg(reg_def)) (this_layer)
     
     r.model = CustomModel(inputs=feeds, outputs=[main_output])
     r.modelEpoch = -1
@@ -881,7 +926,7 @@ class CustomModel(tf.keras.Model):
 
 
 #==========================================================================
-def MakeWaveNetModule(layer_input, out_width:int, kernel_size:int, dilation:int, name:str=""):
+def MakeWaveNetModule(layer_input, out_width:int, kernel_size:int, dilation:int, name:str="", k_reg_def=None):
     # https://arxiv.org/pdf/1609.03499.pdf
     #        |-> [gate]   -|        |-> 1x1 conv -> skip output
     #        |             |-> (*) -|
@@ -902,27 +947,29 @@ def MakeWaveNetModule(layer_input, out_width:int, kernel_size:int, dilation:int,
     # tanh (filter)
     conv_args['name'] = f'{name}_conv_tanh'
     conv_args['activation'] = 'tanh'
+    conv_args['kernel_regularizer'] = make_reg(k_reg_def)
     tanh = layers.Conv1D(**conv_args)(this_layer)
 
     # sigm (gate)
     conv_args['name'] = f'{name}_conv_sigm'
     conv_args['activation'] = 'sigmoid'
+    conv_args['kernel_regularizer'] = make_reg(k_reg_def)
     sigm = layers.Conv1D(**conv_args)(this_layer)
 
     # multiply
     this_layer = layers.Multiply(name=f"{name}_mult")([tanh, sigm])
 
     # skip
-    skip = layers.Dense(units=out_width, use_bias=bias, name=f"{name}_dense_skip")(this_layer)
+    skip = layers.Dense(units=out_width, use_bias=bias, name=f"{name}_dense_skip", kernel_regularizer=make_reg(k_reg_def))(this_layer)
 
     # dense out
-    this_layer = layers.Dense(units=out_width, use_bias=bias, name=f"{name}_dense_res")(this_layer)
+    this_layer = layers.Dense(units=out_width, use_bias=bias, name=f"{name}_dense_res", kernel_regularizer=make_reg(k_reg_def))(this_layer)
     this_layer = layers.Add(name=f"{name}_res_add")([this_layer, layer_input])
 
     return this_layer, skip
 
 #==========================================================================
-def MakeWaveNetStack(layer_input, factor:int, module_count:int, out_width:int, name:str=""):
+def MakeWaveNetStack(layer_input, factor:int, module_count:int, out_width:int, name:str="", k_reg_def=None):
     """Make a WaveNet stack, which is a cascading group of WaveNet modules. Each module
     has its dilation factor increased by factor
 
@@ -940,23 +987,24 @@ def MakeWaveNetStack(layer_input, factor:int, module_count:int, out_width:int, n
     skips = []
     for i in range(module_count):
         this_layer, skip_new = MakeWaveNetModule(this_layer, out_width=out_width, 
-        kernel_size=factor, dilation=factor**i, name=f"{name}_m{i}")
+        kernel_size=factor, dilation=factor**i, name=f"{name}_m{i}", k_reg_def=k_reg_def)
         skips.append(skip_new)
     
     return this_layer, skips
 
 #==========================================================================
-def MakeWaveNet(layer_input, module_count:int, out_width:int, name:str="", stack_count:int=1, factor:int=2):
+def MakeWaveNet(layer_input, module_count:int, out_width:int, name:str="", stack_count:int=1, factor:int=2, k_reg_def=None):
     # Starts with "Causal Conv"
     # "Causal Conv" is not well defined. I believe it's a 1x1 (aka Dense) to change the data width
-    this_layer = layers.Dense(units=out_width, use_bias=False, name=f"{name}wn_cc")(layer_input)
+    this_layer = layers.Dense(units=out_width, use_bias=False, name=f"{name}wn_cc",
+    kernel_regularizer=make_reg(k_reg_def))(layer_input)
 
     # Main body of WaveNet:
     all_skips = []
     for s in range(stack_count):
         thisPre = f"{name}wn_s{s}" if stack_count > 1 else f"{name}wn"
-        this_layer, skips = MakeWaveNetStack(this_layer, factor=factor, 
-            module_count=module_count, out_width=out_width, name=thisPre)
+        this_layer, skips = MakeWaveNetStack(this_layer,factor=factor, 
+            module_count=module_count, out_width=out_width, name=thisPre, k_reg_def=k_reg_def)
         all_skips += skips
 
     receptive_field = stack_count * factor**module_count - (stack_count - 1)

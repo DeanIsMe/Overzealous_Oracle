@@ -183,6 +183,11 @@ if 1:
     print('Reloading NeuralNet')
     import importlib
     importlib.reload(NeuralNet)
+    # Reload config
+    import Config_CC
+    importlib.reload(Config_CC)
+    from Config_CC import GetConfig
+
 
 # Set the seed for repeatable results (careful with this use)
 # print('FIXING SEED FOR REPEATABLE RESULTS')

@@ -85,7 +85,7 @@ def GetConfig():
     # NEURAL NET (MODEL)
 
     # SYSTEM 1 : convolution
-    config['convType'] = 'wavenet' # 'filternet' or 'wavenet' or 'none'
+    config['convType'] = 'filternet' # 'filternet' or 'wavenet' or 'none'
     # FilterNet conv
     # The 3 parameters below can be a list (one value per conv layer), or a scalar (apply to all conv layers)
     # The num of conv layers will be the greatest number of valid layers
@@ -93,7 +93,7 @@ def GetConfig():
     config['convDilation'] = [1,2,4,8,16,32,64,128] # Time dilation factors. 
     config['convFilters'] = [80,75,70,65,60,50,40,30] # Number of filters per layer. List or scalar
     config['convKernelSz'] = 10 # Kernel size per filter
-    config['convCascade'] = True # True:Series. False:Parallel. True:conv modules feed into eachother (with skip connections).  False:conv modules are in parallel - all have same input
+    config['convCascade'] = True # True:Series (default). False:Parallel. True:conv modules feed into eachother (with skip connections).  False:conv modules are in parallel - all have same input
 
     # WaveNet conv
     config['wnStackCount'] = 1 # repeat all module this many times
@@ -110,6 +110,10 @@ def GetConfig():
     config['denseWidths'] = [48] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
 
     config['batchNorm'] = True # applies to conv, rnn, and dense layer modules
+
+    config['regularizerType'] = 'l2' # None or 'l1' or 'l2' or 'l1_l2'
+    config['regularizationRateL1'] = 0.01 # default 0.01. aka alpha
+    config['regularizationRateL2'] = 0.0001 # default 0.01. aka alpha
     
 
     # ****************************
