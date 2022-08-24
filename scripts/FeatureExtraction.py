@@ -112,8 +112,8 @@ def PrintInOutDataRanges(dfs, outData):
 #==========================================================================
 def CalcFavScores(config, prices):
     """
-    prices should have shape (stocks, timesteps)
-    out will have shape (stocks, timesteps, numPeriods)
+    prices should have shape of (stocks, timesteps)
+    out will have shape of (stocks, timesteps, numPeriods)
     The number of periods is defined by the length of config['outputRanges']
     Can use this to output short, medium and long term scores
     """
@@ -144,13 +144,15 @@ def CalcFavScores(config, prices):
 def TranslateVector(input, translation, padding=0):
     """
     Translate a vector to the left (neg) or right (pos)
-    Padding is a single value, that the vector will be padded with
-    Set padding==-2 to use the closest value
+    Padding is a scaler value that the vector will be padded with
+    Specuak case: Set padding==-2 to grab the first or last value as the padding scalar
     Output has same length as input (some padding values added, some removed)
+    'valid' is an array with the same shape as output, indicating which values 
+    are padding (0) and which are true values (1)
     Returns (output, valid)
     """
     if (padding == -2):
-        # Use the closest value as the padding
+        # Use the first or last value as the padding scalar
         if (translation > 0):
             padding = input[:,0,None]
         else:
@@ -174,17 +176,19 @@ def TranslateVector(input, translation, padding=0):
 #==============================================================================
 def CalcFavourabilityScore(config, price_Data, tRange):
     """ 
-    price_Data is a numpy array of shape (samples, timesteps)
+    price_Data is a numpy array of shape= (samples, timesteps)
     price_Data should have each item corresponding to 1 trading day
     It should have no gaps, and should be adjusted for inflation
     It should be linear (not logarithmic)
     """
     
-    # Generate the days at which I want to check the future prices
+    # STEP 1: Create a vector containing the future day offsets on which prices will be compared
+    # These days will be exponentially spaced.  y = a*exp(b*x) + c.
+    
     numPoints = min(tRange[1]-tRange[0], 80)
     padding = 0
     
-    b = 2 # in y = a*exp(b*x) + c. Affects linearity
+    b = 2 # in y = a*exp(b*x) + c.  'b' affects linearity
     a = (tRange[1]-1) / (np.exp(b)-1)
     c = 1-a
     
@@ -192,6 +196,7 @@ def CalcFavourabilityScore(config, price_Data, tRange):
     seeds = np.linspace(seedBot,1,numPoints)
     checkDays = np.floor(a*np.exp(seeds*b)+c).astype(int)
     
+    # STEP 2
     score = np.zeros(price_Data.shape)
     validity = np.zeros(price_Data.shape)
     
@@ -209,11 +214,12 @@ def CalcFavourabilityScore(config, price_Data, tRange):
     else:
         score = (score / validity) / price_Data
         
-
     # There will be data at the end that is NaN/Inf
     # Extend the last valid score out to the end
     score[:,-tRange[0]:] = score[:,-tRange[0]-1:-tRange[0]]
-    
+
+
+    # STEP 3: (optional) Apply an output transform
     if config['binarise']:
         # Minimise outliers reduces the size of outliers
         # Transform towards BINARY output

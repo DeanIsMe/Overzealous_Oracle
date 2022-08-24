@@ -37,7 +37,7 @@ class DataLoader:
         for pair in data:
             pairs.append(pair)
             dur_avail.append(data[pair]['time'].iloc[-1] - data[pair]['time'].iloc[0])
-            last_time.append(data[pair]['time'].iloc[-1])
+            last_time.append(data[pair]['time'].iloc[-1]) 
 
         df = pd.DataFrame({'pair':pairs, 'dur_avail':dur_avail, 'last_time':last_time})
         return df
@@ -130,6 +130,10 @@ class DataLoader:
 
 # %%
 #*******************************************************************************
+#*******************************************************************************
+#*******************************************************************************
+# pycwatch
+# For incremental data. Not used as of 2022-08-22
 import pycwatch # https://github.com/iuvbio/pycwatch
 # API docs are here: https://docs.cryptowat.ch/rest-api/markets/list
 
@@ -191,8 +195,8 @@ def GetHourlyDfCryptowatch(coins, numHours):
     'high', # price
     'low', # price
     'close', # price
-    'volume', # volume, in units of the base coin
-    'quote_volume' # volume, in units of the quoted coin
+    'volume', # volume, in units of the base coin. Base = nominated coin. E.g. NANO in NANO-USD
+    'quote_volume' # volume, in units of the quoted coin. Quoted = reference coin. E.g. USD in NANO-USD
     ]
 
     period_str = '1h'
@@ -358,8 +362,11 @@ def GetHourlyDfCryptowatch(coins, numHours):
 
 #%%
 #*******************************************************************************
+#*******************************************************************************
+#*******************************************************************************
 # READ & PICKLE KRAKEN CSV
-# Downloaded from 
+# Downloaded from https://support.kraken.com/hc/en-us/articles/360047543791-Downloadable-historical-market-data-time-and-sales-
+
 
 # Read in all hourly data
 
@@ -400,7 +407,7 @@ def ReadKrakenCsv(csv_dir):
                 names=['time','open','high','low','close','volume','trades'], \
                     dtype={'time':np.int64, 'trades':np.int64})
             pair_df.set_index(inplace=True, keys=pd.DatetimeIndex(pd.to_datetime(pair_df['time'], unit='s')))
-            pair_df.index.name='datetime'
+            pair_df.index.name = 'datetime'
             pair_df.pop('open')
             pair_df.pop('trades')
             pair_df['filler'] = False # Indicates whether each row was generated to fill a gap
