@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Cryptocurrency configuration
-
-from DataTypes import FeedLoc
+#%%
+from DataTypes import FeedLoc, printmd
 import numpy as np
 
 #==============================================================================
@@ -21,22 +21,66 @@ def GetConfig():
     # ****************************
     # INPUT FEATURES
 
-    
-
     # Volatility
     config['vixNumPastRanges'] = 3 # number of ranges to use
     config['vixMaxPeriodPast'] = 14 * 24
     
     # RSI - Relative Strength Index
-    config['rsiWindowLens'] = [24, 96] # The span of the EMA calc for RSI
+    config['rsiWindowLens'] = [24, 96] # A list of window lengths for RSI calcs. One input per value in the list
     
     # Exponential Moving Average
     config['emaLengths'] = [] # The span of the EMAs
 
     # I define divergence as the price relative to the moving average of X points
-    config['dvgLengths'] = np.geomspace(start=1, stop=180, num=5, dtype=int) * 24
+    config['dvgLengths'] = list(np.geomspace(start=1, stop=180, num=5, dtype=int) * 24)
 
 
+   # ****************************
+    # INPUT DATA HANDLING
+
+    config['dataRatios'] = [0.80, 0.20 ,0.00] # Training, Validation, Testing
+    #note: 03/02/2018 I am using the same set for validation and testing
+    # I'm just using the 'test' set to generate state for prediction
+
+    # Input data and output data are divided by 90th percentile. Then, they
+    # are multiplied by the 'scale'. This has a massive impact on the training
+    # and results
+    config['inScale'] = 1.
+
+    # feedLoc indicates the location at which the data feature will be fed into the network
+    # Note that a feature can be used at multiple feed locations
+    flc = [[] for i in range(FeedLoc.LEN)]
+
+    flc[FeedLoc.conv].append('ema')
+    flc[FeedLoc.conv].append('dvg')
+    flc[FeedLoc.conv].append('volume')
+    flc[FeedLoc.conv].append('logDiff')
+    flc[FeedLoc.conv].append('rsi')
+    flc[FeedLoc.conv].append('vix')
+    
+    # Add everything everywhere
+    # flc[FeedLoc.conv].append('ema')
+    # flc[FeedLoc.conv].append('dvg')
+    # flc[FeedLoc.conv].append('volume')
+    # flc[FeedLoc.conv].append('logDiff')
+    # flc[FeedLoc.conv].append('rsi')
+    # flc[FeedLoc.conv].append('vix')
+
+    # flc[FeedLoc.rnn].append('ema')
+    # flc[FeedLoc.rnn].append('dvg')
+    # flc[FeedLoc.rnn].append('volume')
+    # flc[FeedLoc.rnn].append('logDiff')
+    # flc[FeedLoc.rnn].append('rsi')
+    # flc[FeedLoc.rnn].append('vix')
+
+    # flc[FeedLoc.dense].append('ema')
+    # flc[FeedLoc.dense].append('dvg')
+    # flc[FeedLoc.dense].append('volume')
+    # flc[FeedLoc.dense].append('logDiff')
+    # flc[FeedLoc.dense].append('rsi')
+    # flc[FeedLoc.dense].append('vix')
+
+    config['feedLoc'] = flc
 
     # ****************************
     # OUTPUT (TARGET) DATA
@@ -80,6 +124,11 @@ def GetConfig():
     config['selectivity'] = 2
     # A good balance seems to be ternarise = 1, selectivity = 2
 
+    # Input data and output data are divided by 90th percentile. Then, they
+    # are multiplied by the 'scale'. This has a massive impact on the training
+    # and results
+    config['outScale'] = 1.
+
 
     # ****************************
     # NEURAL NET (MODEL)
@@ -109,69 +158,26 @@ def GetConfig():
     # SYSTEM 3: Dense/Fully connected
     config['denseWidths'] = [48] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
 
+    # Other model parameters
     config['batchNorm'] = True # applies to conv, rnn, and dense layer modules
 
     config['regularizerType'] = 'l2' # None or 'l1' or 'l2' or 'l1_l2'
     config['regularizationRateL1'] = 0.01 # default 0.01. aka alpha
     config['regularizationRateL2'] = 0.0001 # default 0.01. aka alpha
+
+    config['dropout'] = 0.2 # Dropout_rate of layer applied before each layer. Set to 0 to disable
     
 
-    # ****************************
-    # TRAINING DATA
+ 
 
-    config['dataRatios'] = [0.80, 0.20 ,0.00] # Training, Validation, Testing
-    #note: 03/02/2018 I am using the same set for validation and testing
-    # I'm just using the 'test' set to generate state for prediction
-
-    config['evaluateBuildStatePoints'] = 500 # The number of timesteps used to build state when predicting values for model validation during training
-
-    # Input data and output data are divided by 90th percentile. Then, they
-    # are multiplied by the 'scale'. This has a massive impact on the training
-    # and results
-    config['inScale'] = 1.
-    config['outScale'] = 1.
-
-    # feedLoc indicates the location at which the data feature will be fed into the network
-    # Note that a feature can be used at multiple feed locations
-    flc = [[] for i in range(FeedLoc.LEN)]
-
-    flc[FeedLoc.conv].append('ema')
-    flc[FeedLoc.conv].append('dvg')
-    flc[FeedLoc.conv].append('volume')
-    flc[FeedLoc.conv].append('logDiff')
-    flc[FeedLoc.conv].append('rsi')
-    flc[FeedLoc.conv].append('vix')
     
-    # Add everything everywhere
-    # flc[FeedLoc.conv].append('ema')
-    # flc[FeedLoc.conv].append('dvg')
-    # flc[FeedLoc.conv].append('volume')
-    # flc[FeedLoc.conv].append('logDiff')
-    # flc[FeedLoc.conv].append('rsi')
-    # flc[FeedLoc.conv].append('vix')
-
-    # flc[FeedLoc.rnn].append('ema')
-    # flc[FeedLoc.rnn].append('dvg')
-    # flc[FeedLoc.rnn].append('volume')
-    # flc[FeedLoc.rnn].append('logDiff')
-    # flc[FeedLoc.rnn].append('rsi')
-    # flc[FeedLoc.rnn].append('vix')
-
-    # flc[FeedLoc.dense].append('ema')
-    # flc[FeedLoc.dense].append('dvg')
-    # flc[FeedLoc.dense].append('volume')
-    # flc[FeedLoc.dense].append('logDiff')
-    # flc[FeedLoc.dense].append('rsi')
-    # flc[FeedLoc.dense].append('vix')
-
-    config['feedLoc'] = flc
-
     # ****************************
     # TRAINING
 
     config['epochs'] = 8 # Number of complete passes of the data (subject to early stopping)
     
-    config['dropout'] = 0.2 # Dropout_rate of layer applied before each LSTM or Conv1D. Set to 0 to disable
+    config['evaluateBuildStatePoints'] = 500 # The number of timesteps used to build state when predicting values for model validation during training
+
 
     # After training, change the weights to the model that had the best 
     # validation score
@@ -192,3 +198,109 @@ def GetConfig():
     config['plotWidth'] = 9
 
     return config
+
+
+#==============================================================================
+# Creates a string that represents the configuration, in markdown. Prints it.
+def PrintConfigString(c):
+    s = "---  \n"
+    s += "## Configuration  \n"
+    s += "### Input data  \n"
+    s += f"**Coins**: {', '.join(c['coinList'])} for {c['numHours']} hrs ({c['numHours']/24/365:.2f} years)\\"
+
+
+    s += "### Input features  \n"
+    if c['vixNumPastRanges']:
+        s += f"**VIX**: {c['vixNumPastRanges']} ranges, up to {c['vixMaxPeriodPast']} hrs  \n"
+    
+    if c['rsiWindowLens']:
+        s += f"**RSI** lengths of "
+        for windowLen in c['rsiWindowLens']:
+            s += f"{windowLen}, "
+        s += "hrs  \n"
+    
+    if c['emaLengths']:
+        s += f"**EMA** lengths of "
+        for windowLen in c['emaLengths']:
+            s += f"{windowLen}, "
+        s += "hrs  \n"
+
+    if c['dvgLengths']:
+        s += f"**Divergence** lengths of "
+        for windowLen in c['dvgLengths']:
+            s += f"{windowLen}, "
+        s += "hrs  \n"
+    
+
+    s += "### Input handling  \n"
+    s += f"Data split training={c['dataRatios'][0]}, validation={c['dataRatios'][1]}, testing={c['dataRatios'][2]}  \n"
+    if c['inScale'] != 1.:
+        s += f"Output data scale = {c['outScale']}  \n"
+    if c['feedLoc'][FeedLoc.conv]:
+        s += f"Data fed to conv: {', '.join(c['feedLoc'][FeedLoc.conv])}  \n"
+    if c['feedLoc'][FeedLoc.rnn]:
+        s += f"Data fed to RNN: {', '.join(c['feedLoc'][FeedLoc.rnn])}  \n"
+    if c['feedLoc'][FeedLoc.dense]:
+        s += f"Data fed to dense: {', '.join(c['feedLoc'][FeedLoc.dense])}  \n"
+
+
+
+    s += "  \n### Output (target) data  \n"
+    s += f"**Time ranges**: {c['outputRanges']} hrs. (excl {c['excludeRecentSteps']})  \n"
+    if c['binarise']:
+        s += f"Binarise={c['binarise']}  \n"
+    if c['ternarise']:
+        s += f"Ternarise={c['ternarise']}. Selectivity={c['selectivity']}  \n"
+    if c['outScale'] != 1.:
+        s += f"Output data scale = {c['outScale']}  \n"
+
+
+    s += "  \n### Neural net (model)  \n"
+    if c['convType'].lower() == 'filternet':
+        s += f"**FilterNet** convolution, ({'serial' if c['convCascade'] else 'parallel'})  \n"
+        s += f"dilation={c['convDilation']}, filterCnt={c['convFilters']}, kernelSz={c['convKernelSz']}  \n"
+    elif c['convType'].lower() == 'wavenet':
+        s += f"**WaveNet** convolution  \n"
+        s += f"  {c['wnModuleCount']} modules of width {c['wnWidth']}, factor={c['wnFactor']}. STACKED {c['wnStackCount']} times.  \n"
+    elif c['convType'].lower() == 'none':
+        s += "No convolution stage  \n"
+    else:
+        s += f"# UNKNOWN CONV STAGE! {c['convType']}  \n"
+
+    s += "  \n"
+    if c['bottleneckWidth']:
+        s += f"Bottleneck to width {c['bottleneckWidth']}  \n"
+    
+    s += f"RNN type: **{c['rnnType']}**. LayerWidths = {c['rnnWidths']}  \n"
+    s += "  \n"
+    s += f"**Dense** LayerWidths={c['denseWidths']}  \n"
+    s += "  \n"
+
+    s += "**Model properties**  \n"
+    if c['batchNorm']:
+        s += "BatchNorm ON (all layers)  \n"
+    if c['regularizerType'] == 'None':
+        s += "No regularizer  \n"
+    elif c['regularizerType'].lower() == 'l1':
+        s += f"L1 regularizer. Rate={c['regularizationRateL1']}  \n"
+    elif c['regularizerType'].lower() == 'l2':
+        s += f"L2 regularizer. Rate={c['regularizationRateL2']}  \n"
+    elif c['regularizerType'].lower() == 'l1_l2':
+        s += f"L1 & L2 regularizer. Rates={c['regularizationRateL1']} & {c['regularizationRateL2']}  \n"
+
+    s+= f"Dropout rate = {c['dropout']}  \n"
+    
+    s += "  \n### Training process  \n"
+    s += f"Train for **{c['epochs']} epochs**"
+    if c['earlyStopping']:
+        s += f", early stopping with patience {c['earlyStopping']} epochs"
+    s += '  \n'
+    s += f"Optimiser=**{c['optimiser']}**, learning rate={c['learningRate']}  \n"
+
+    s += "  \n---  \n"
+    printmd(s)
+
+
+if __name__ == '__main__':
+    PrintConfigString(GetConfig())
+# %%

@@ -21,7 +21,7 @@ import os
 #from ClockworkRNN import CWRNN
 
 from DataTypes import printmd, SecToHMS, FeedLoc
-
+from Config_CC import GetConfig, PrintConfigString
 
 #==========================================================================
 class RegularizerDef:
@@ -594,6 +594,7 @@ def MakeNetwork(r):
 
 #==========================================================================
 def PrintNetwork(r):
+    PrintConfigString(r.config)
     r.model.summary()
 
     tf.keras.utils.plot_model(r.model, to_file='model.png', show_shapes=True)

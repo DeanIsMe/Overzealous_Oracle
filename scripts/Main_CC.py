@@ -23,7 +23,7 @@ from tensorflow import keras
 
 import FeatureExtraction as FE
 import NeuralNet
-from Config_CC import GetConfig
+from Config_CC import GetConfig, PrintConfigString
 
 from DataTypes import ModelResult, printmd, SecToHMS
 from TestSequences import GetInSeq
