@@ -374,6 +374,8 @@ import pandas as pd
 import numpy as np
 import os
 import time
+from DataTypes import printmd
+import pickle
 
 def ReadKrakenCsv(csv_dir):
     """
@@ -425,13 +427,15 @@ def ReadKrakenCsv(csv_dir):
     # Remove spotty starts and fill gaps in the data
     data_hist, _, _ = DataScrubbing(data_hist, timestep)
 
+    # Add change_vs_market
+    total_market_change = CalcChangeVsMarket(data_hist)
+
     # Save the data
-    import pickle
-    from datetime import datetime
+    
     date_str = pd.to_datetime(time_last_data, unit='s').strftime('%Y-%m-%d')
     save_filename = f'./indata/{date_str}_price_data_60m.pickle'
     filehandler = open(save_filename, 'wb')
-    package = {'data':data_hist, 'date_str':date_str, \
+    package = {'data':data_hist, 'total_market_change':total_market_change, 'date_str':date_str, \
         'time_saved':time.time(), 'time_last_data':time_last_data, 'time_kraken_modified':time_modified, \
             'gaps_filled_until':time_last_data, 'timestep':timestep}
     pickle.dump(package, filehandler)
@@ -439,7 +443,6 @@ def ReadKrakenCsv(csv_dir):
     print(f'Saved to {save_filename}')
     print(f'DONE! Loaded & pickled CSV data for {len(data_hist)} pairs.')
 
-# %%
 #*******************************************************************************
 # DEALING WITH GAPS IN DATA
 from datetime import datetime
@@ -541,6 +544,10 @@ def DataScrubbing(data, timestep):
     for pair in data.keys():
         df = data[pair]
         rows_initial = len(df.index)
+        if rows_initial < 100:
+            print(f"[{pair:9s}] Had {rows_initial:6} rows. Not enough! REMOVED PAIR")
+            pairs_to_delete.append(pair)
+            continue
 
         df, rows_removed = RemoveSpottyStart(df, timestep, check_len=24)
         total_rows_removed += rows_removed
@@ -616,19 +623,123 @@ def PlotGaps(data, pair='ethusd'):
     #ax.set_yscale('log')
     ax.grid()
 
+# ******************************************************************************
+# Comparing performance to market
+# Adds the fields 'volume_usd', 'market_volume_fraction', and 'change_vs_market'
+# volume_usd is the hourly volume, in USD
+# market_volume_fraction is market cap of each token relative to the
+# overall crypto market. Smoothed.
+# change_vs_market is how the token performed compared to the overall crypto
+# market, on an hourly basis. Each value is a ratio, so call .product() over
+# a range to find the total performance difference over that range.
+#
+# I can't easily get the market cap of each coin. Can't even easily get the 
+# overall crypto market cap. So, instead of weighting coins by their market cap,
+# I weight coins by their volume in USD
+def CalcChangeVsMarket(data):
+    fiat = ['usd', 'eur', 'cad', 'aud', 'gbp', 'chf', 'jpy'] # All fiat currencies
+
+    avg_len = 24 * 30 # hours. Used for smoothing for calculating the 'dominance' of each token
+
+    paired_to_usd = set()
+    usd_pairs = set()
+
+    for pair in data.keys():
+        if pair[-3:] == 'usd':
+            usd_pairs.add(pair)
+            paired_to_usd.add(pair[:-3])
+
+    # Calculate volume_usd (price * vol) for all USD pairs
+    # volume_usd is always in USD
+    for pair in usd_pairs:
+        df = data[pair]
+        df['volume_usd'] = df['close'] * df['volume']
+        # print(f"added {pair:8s}  len={len(df['volume_usd'])}")
+
+    # Find pairs that don't include USD, but can be converted to USD
+    # This is to make sure that I account for all (most) of the volume
+    for pair in data.keys():
+        if (ref:=pair[-3:]) in paired_to_usd:
+
+            # print(f"Extra pair {pair:8s}")
+            df = data[pair]
+
+            nom = pair[:-3] # nominated currency (as opposed to reference currency). Pair order is "nominated-reference"
+
+            df_refusd = data[ref + 'usd'] # Should always succeed, because paired_to_usd is known
+            idx_common = df.index.intersection(df_refusd.index)
+            df['volume_usd'] = (df['close'] * df['volume']).multiply(df_refusd['close'][idx_common])
+
+            # Add volume_usd to reference currency USD pair
+            df_refusd['volume_usd'] = df_refusd['volume_usd'].add(df['volume_usd'], fill_value=0)
+            # Add volume_usd to nominated currency USD pair (if it exists)
+            if nom + 'usd' in data.keys():
+                df_nomusd = data[nom + 'usd']
+                df_nomusd['volume_usd'] = df_nomusd['volume_usd'].add(df['volume_usd'], fill_value=0)
+
+
+    # Smooth and sum to get total volume in USD
+    ser_volume_usd = pd.Series(dtype='float64')
+    for pair in data.keys():
+        df = data[pair]
+        if 'volume_usd' in df.columns:
+            # I'm doing ".sum() / avg_len" instead of ".mean()"", because there's different behaviour
+            # when fewer than avg_len data points are available. ".sum() / avg_len" will rise from 0.
+            df['volume_usd'] = df['volume_usd'].rolling(avg_len, min_periods=1).sum() * 1/avg_len
+            nom = pair[:-3]
+            if (pair in usd_pairs) and (nom not in fiat): # Include only tokens (exclude fiat)
+                ser_volume_usd = ser_volume_usd.add(df['volume_usd'], fill_value=0)
+
+    # Scale each volume_usd by the total
+    # This will be used as a proxy for % market cap
+    for pair in usd_pairs:
+        df = data[pair]
+        df['market_volume_fraction'] = df['volume_usd'] / ser_volume_usd[df.index]
+
+    # Calculate change_vs_market
+    # Calculate a weighted average for the entire market: average the % change in 'close', weighted by the market_volume_fraction.
+    # The 'market' is the crypto market, denominated in USD. 
+    # So comparing pairs that aren't referenced in fiat (e.g. 'nanobtc') vs the 'market' likely isn't insightful.
+    # 'change_vs_market' is a series of ratios. To compare 2 dates, perform a product() of all values between them.
+    ser_sum = pd.Series(dtype='float64')
+    ser_count = pd.Series(dtype='float64')
+    for pair in usd_pairs:
+        nom = pair[:-3]
+        if nom not in fiat: # Include only tokens (exclude fiat)
+            df = data[pair]
+            diff = df['close'].pct_change()
+            diff.iloc[0] = 0.
+            ser_sum = ser_sum.add(diff * df['market_volume_fraction'], fill_value=0)
+            ser_count = ser_count.add(df['market_volume_fraction'], fill_value=0)
+    ser_market_diff = ser_sum / ser_count
+    ser_market_ratio = ser_market_diff + 1. # Ratios of changes
+
+    # For each coin, for each time step: calculate the performance vs the market
+    for pair in data.keys():
+        df = data[pair]
+        idx_common = df.index.intersection(ser_market_ratio.index)
+        ratio = df['close'].pct_change() + 1
+        ratio.iloc[0] = 1.
+        df['change_vs_market'] = ratio.divide(ser_market_ratio[idx_common])
+    
+    print("Calculated market_volume_fraction and change_vs_market")
+
+    return ser_market_ratio
+
+
 
 
 #%%
 #*******************************************************************************
 # Testing
-if __name__ == '__main__':
+if __name__ == '__main__' or true: # !@#$
     os.chdir(os.path.dirname(os.path.dirname(__file__)))
     print(f'Working directory is "{os.getcwd()}"')
 
     #filename = './indata/2021-09-30_price_data_60m.pickle'
     #dfs = GetHourlyDf(filename, ['ETH'], 100)
 
-    ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT 2021 Q4')
+    ReadKrakenCsv('C:/Users/deanr/Desktop/temp/kraken_data/Kraken_OHLCVT 2022 Q2/')
 
 
 #%%
