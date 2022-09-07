@@ -42,6 +42,7 @@ import pandas as pd
 from DataTypes import FeedLoc, printmd
 
 
+
 tf.keras.backend.clear_session()
 
 # to force CPU compute:
@@ -53,7 +54,7 @@ if 0:
 # Load the input data file
 #At this point, the stock data should have all gaps filled in
 if not 'dataLoader' in locals():
-    inDataFileName = './indata/2021-09-30_price_data_60m.pickle'
+    inDataFileName = './indata/2022-06-30_price_data_60m.pickle'
     dataLoader = cgd.DataLoader(inDataFileName)
     print('Loaded input file')
 
@@ -75,6 +76,7 @@ def PrepData(r:ModelResult, dfs:list):
     FE.AddRsi(r, dfs)
     FE.AddEma(r, dfs)
     FE.AddDivergence(r, dfs)
+    FE.AddChangeVsMarket(r, dfs)
     FE.ScaleVolume(dfs)
 
     #FE.AddSpread(r, dfs)
@@ -135,7 +137,7 @@ def PrepData(r:ModelResult, dfs:list):
 
 def PlotInOutData(r, dfs, inData, outData, prices):
     # Plot a small sample of the input data
-    FE.PlotInData(r, dfs, 0, [5000, 10000])
+    FE.PlotInData(r, dfs, 0, 2000)
 
     # Print info about in & out data:
     print("The input feed locations for the features are:")
@@ -200,7 +202,7 @@ r = ModelResult()
 r.config = GetConfig()
 
 
-r.config['epochs'] = 400
+r.config['epochs'] = 10
 r.config['revertToBest'] = False
 
 

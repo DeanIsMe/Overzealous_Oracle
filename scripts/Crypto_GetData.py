@@ -628,11 +628,14 @@ def PlotGaps(data, pair='ethusd'):
 # Adds the fields 'volume_usd', 'market_volume_fraction', and 'change_vs_market'
 # volume_usd is the hourly volume, in USD
 # market_volume_fraction is market cap of each token relative to the
-# overall crypto market. Smoothed.
+# overall crypto market. Also called 'dominance'. Smoothed.
 # change_vs_market is how the token performed compared to the overall crypto
 # market, on an hourly basis. Each value is a ratio, so call .product() over
 # a range to find the total performance difference over that range.
-#
+# 
+# Also returns market_ratio, which indicates how the overall market performed
+# on an hourly basis.
+# 
 # I can't easily get the market cap of each coin. Can't even easily get the 
 # overall crypto market cap. So, instead of weighting coins by their market cap,
 # I weight coins by their volume in USD
@@ -658,6 +661,7 @@ def CalcChangeVsMarket(data):
 
     # Find pairs that don't include USD, but can be converted to USD
     # This is to make sure that I account for all (most) of the volume
+    # This will add pairs using EUR, BTC, and USDT.
     for pair in data.keys():
         if (ref:=pair[-3:]) in paired_to_usd:
 
@@ -698,9 +702,12 @@ def CalcChangeVsMarket(data):
 
     # Calculate change_vs_market
     # Calculate a weighted average for the entire market: average the % change in 'close', weighted by the market_volume_fraction.
+    # Note that it's not smoothed.
     # The 'market' is the crypto market, denominated in USD. 
     # So comparing pairs that aren't referenced in fiat (e.g. 'nanobtc') vs the 'market' likely isn't insightful.
     # 'change_vs_market' is a series of ratios. To compare 2 dates, perform a product() of all values between them.
+
+    # First, calculate the market performance
     ser_sum = pd.Series(dtype='float64')
     ser_count = pd.Series(dtype='float64')
     for pair in usd_pairs:
@@ -724,6 +731,19 @@ def CalcChangeVsMarket(data):
     
     print("Calculated market_volume_fraction and change_vs_market")
 
+    # I COULD use unit-less absolute values instead of ratios
+    # df['change_vs_market'].cumprod() gives the unit-less absolute values
+
+    # Ratios vs absolute values
+    # df['change_vs_market'].cumprod()
+    # is the same as
+    # df['close'] / ser_market_ratio.cumprod()
+
+    # df['change_vs_market'][20:25].prod()
+    # is the same as
+    # a[24] / a[20], where:  a = df['close'] / ser_market_ratio.cumprod(); 
+
+
     return ser_market_ratio
 
 
@@ -732,7 +752,7 @@ def CalcChangeVsMarket(data):
 #%%
 #*******************************************************************************
 # Testing
-if __name__ == '__main__' or true: # !@#$
+if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.dirname(__file__)))
     print(f'Working directory is "{os.getcwd()}"')
 

@@ -15,8 +15,8 @@ def GetConfig():
     # INPUT DATA
 
     # Raw data
-    config['coinList'] = ['BTC'] # a list of coin strings
-    config['numHours'] = 24*365*3
+    config['coinList'] = ['BTC','ETH','SOL'] # a list of coin strings
+    config['numHours'] = 24*365*1
 
     # ****************************
     # INPUT FEATURES
@@ -33,6 +33,8 @@ def GetConfig():
 
     # I define divergence as the price relative to the moving average of X points
     config['dvgLengths'] = list(np.geomspace(start=1, stop=180, num=5, dtype=int) * 24)
+
+    config['changeVsMarketLens'] = [1, 24, 24*7, 24*60] # A list of lengths to use in calculating the change vs market
 
 
    # ****************************
@@ -57,6 +59,7 @@ def GetConfig():
     flc[FeedLoc.conv].append('logDiff')
     flc[FeedLoc.conv].append('rsi')
     flc[FeedLoc.conv].append('vix')
+    flc[FeedLoc.conv].append('vsMarket')
     
     # Add everything everywhere
     # flc[FeedLoc.conv].append('ema')
@@ -79,6 +82,9 @@ def GetConfig():
     # flc[FeedLoc.dense].append('logDiff')
     # flc[FeedLoc.dense].append('rsi')
     # flc[FeedLoc.dense].append('vix')
+
+    flc[FeedLoc.dense].append('market_volume_fraction')
+
 
     config['feedLoc'] = flc
 

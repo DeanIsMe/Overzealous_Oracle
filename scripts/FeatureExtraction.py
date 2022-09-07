@@ -27,8 +27,10 @@ def PlotInData(r, dfs, sample=0, tRange=2000, colPatterns=[]):
         a partial string is sufficient to match
     """
     if type(tRange) == int:
-        tInd = np.array(range(r.timesteps))
+        tRange = min(tRange, r.timesteps)
+        tInd = np.array(range(tRange))
     else:
+        tRange[1] = min(tRange[1], r.timesteps)
         tInd = np.array(range(tRange[0], tRange[1]))   
     x = tInd
     fig, ax = plt.subplots(figsize=(r.config['plotWidth'], 4))
@@ -255,7 +257,7 @@ def ScaleData(dfs, cols, quantile=0.90):
     dfs is a list of data frames
     cols is a list of the column names that need to be scaled
     All values in all dataframes are scaled by the same ratio
-    quantile is 0. to 1. This quantile will scaled to =1
+    quantile ranges from 0. to 1. This quantile will scaled to =1
     """
     if not isinstance(cols, list):
         cols = [cols]
@@ -513,3 +515,30 @@ def PrepHighLowData(dfs):
            
     return
 
+#==============================================================================
+def AddChangeVsMarket(r, dfs):
+
+    # for each dataframe, for each length, for each timestep, calculate the product() of 
+    # df['change_vs_market'] for <this_len> timesteps
+    
+    newCols = []
+    for df in dfs:
+        for i, this_len in enumerate(r.config['changeVsMarketLens']):
+            col = f"vsMarket{i}_{this_len}"
+            newCols.append(col)
+            # Product over exact period:
+            # out = df['change_vs_market'].rolling(this_len, min_periods=1).apply(np.prod, raw=True) # Fixed method
+
+            # Applying weights (a custom window) to the product, which has a linear transition period at the back end
+            # This reduces noise being introduced from <this_len> periods ago
+            trans_len = round(this_len/4) # number of points to fade over
+            extra_pts = round(trans_len/2)
+            weights = np.ones((this_len + extra_pts,))
+            weights[0:trans_len] = np.array([0.5 + (x - extra_pts + 0.5)/trans_len for x in range(trans_len)])
+            # Applying weights to a rolling product isn't the simplest calculation
+            weighted_prod = lambda seq: np.prod((seq-1)*weights + 1) if len(seq) == len(weights) else np.prod(seq)
+            df.loc[:, col] = df['change_vs_market'].rolling(len(weights), min_periods=1).apply(weighted_prod, raw=True)
+    
+    ScaleData(dfs, newCols)
+    return
+    
