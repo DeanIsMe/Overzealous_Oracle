@@ -209,7 +209,7 @@ r.config['revertToBest'] = False
 dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours']) # a list of data frames
 dfs, inData, outData, prices = PrepData(r, dfs)
 
-#PlotInOutData(r, dfs, inData, outData, prices)
+PlotInOutData(r, dfs, inData, outData, prices)
 
 r.isBatch = False
 r.batchRunName = ''

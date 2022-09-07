@@ -488,9 +488,10 @@ def AddLogDiff(r, dfs):
 
 #==============================================================================
 def ScaleVolume(dfs):
-    # Normalise the volume
+    # Make a new volume column, which is scaled
+    # Each volume series is scaled independently
     for df in dfs:
-        df.volume /= df.volume.quantile(0.9)
+        df.volNom = df.volume_nom / df.volume_nom.quantile(0.9)
 
 #==============================================================================
 def PrepHighLowData(dfs):

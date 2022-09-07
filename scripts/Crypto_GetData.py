@@ -334,6 +334,7 @@ def GetHourlyDfCryptowatch(coins, numHours):
                 this_df.index.name='datetime'
                 this_df.pop('quote_volume')
                 this_df.pop('open')
+                this_df.rename(columns={'volume':'volume_nom'}) # Volume in nominated currency
                 
                 if points_recv != point_count:
                     print(f'[{coin}] Actually received {points_recv} / {point_count} points.')
@@ -406,8 +407,9 @@ def ReadKrakenCsv(csv_dir):
             pair_str = pair_str.replace('xbt','btc')
 
             pair_df = pd.read_csv(os.path.join(csv_dir, filename), header=None, \
-                names=['time','open','high','low','close','volume','trades'], \
+                names=['time','open','high','low','close','volume_nom','trades'], \
                     dtype={'time':np.int64, 'trades':np.int64})
+            # volume_nom = volume in nominated currency. E.g. 'NANO' in 'NANO-USD' pair
             pair_df.set_index(inplace=True, keys=pd.DatetimeIndex(pd.to_datetime(pair_df['time'], unit='s')))
             pair_df.index.name = 'datetime'
             pair_df.pop('open')
@@ -515,7 +517,7 @@ def FillDataGaps(df, timestep):
         newdf.index.name='datetime'
         # Assume volume is 0 during these gaps.
         # All prices will be interpolated
-        newdf['volume'] = 0
+        newdf['volume_nom'] = 0
         newdf['filler'] = True # All of these rows are filler rows
 
         df = pd.concat([df, newdf])
@@ -656,7 +658,7 @@ def CalcChangeVsMarket(data):
     # volume_usd is always in USD
     for pair in usd_pairs:
         df = data[pair]
-        df['volume_usd'] = df['close'] * df['volume']
+        df['volume_usd'] = df['close'] * df['volume_nom']
         # print(f"added {pair:8s}  len={len(df['volume_usd'])}")
 
     # Find pairs that don't include USD, but can be converted to USD
@@ -672,7 +674,7 @@ def CalcChangeVsMarket(data):
 
             df_refusd = data[ref + 'usd'] # Should always succeed, because paired_to_usd is known
             idx_common = df.index.intersection(df_refusd.index)
-            df['volume_usd'] = (df['close'] * df['volume']).multiply(df_refusd['close'][idx_common])
+            df['volume_usd'] = (df['close'] * df['volume_nom']).multiply(df_refusd['close'][idx_common])
 
             # Add volume_usd to reference currency USD pair
             df_refusd['volume_usd'] = df_refusd['volume_usd'].add(df['volume_usd'], fill_value=0)

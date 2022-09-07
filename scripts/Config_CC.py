@@ -55,7 +55,7 @@ def GetConfig():
 
     flc[FeedLoc.conv].append('ema')
     flc[FeedLoc.conv].append('dvg')
-    flc[FeedLoc.conv].append('volume')
+    flc[FeedLoc.conv].append('volNom')
     flc[FeedLoc.conv].append('logDiff')
     flc[FeedLoc.conv].append('rsi')
     flc[FeedLoc.conv].append('vix')
@@ -64,21 +64,21 @@ def GetConfig():
     # Add everything everywhere
     # flc[FeedLoc.conv].append('ema')
     # flc[FeedLoc.conv].append('dvg')
-    # flc[FeedLoc.conv].append('volume')
+    # flc[FeedLoc.conv].append('volNom')
     # flc[FeedLoc.conv].append('logDiff')
     # flc[FeedLoc.conv].append('rsi')
     # flc[FeedLoc.conv].append('vix')
 
     # flc[FeedLoc.rnn].append('ema')
     # flc[FeedLoc.rnn].append('dvg')
-    # flc[FeedLoc.rnn].append('volume')
+    # flc[FeedLoc.rnn].append('volNom')
     # flc[FeedLoc.rnn].append('logDiff')
     # flc[FeedLoc.rnn].append('rsi')
     # flc[FeedLoc.rnn].append('vix')
 
     # flc[FeedLoc.dense].append('ema')
     # flc[FeedLoc.dense].append('dvg')
-    # flc[FeedLoc.dense].append('volume')
+    # flc[FeedLoc.dense].append('volNom')
     # flc[FeedLoc.dense].append('logDiff')
     # flc[FeedLoc.dense].append('rsi')
     # flc[FeedLoc.dense].append('vix')
