@@ -465,6 +465,7 @@ def RemoveSpottyStart(df, timestep, check_len = 24):
     t_ser = df[df['filler'] == False]['time']
     delta_t = np.diff(t_ser)
 
+    # TODO check if I actually want convolution here, or autocorrelation
     gap_sum = np.convolve(delta_t / timestep, np.ones([check_len,]), mode='valid')
     first_good_idx = np.argmin(gap_sum)
     if gap_sum[first_good_idx] < check_len*0.99:

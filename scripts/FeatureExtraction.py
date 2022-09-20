@@ -11,8 +11,9 @@ from pandas.core.frame import DataFrame
 
 # df: dataframe
 # dfs: dataframes
-# There is one dataframe per ticker/coin
+# There is one dataframe per stock/coin
 
+#%%
 
 from DataTypes import printmd
 from scripts.DataTypes import FeedLoc
@@ -131,17 +132,17 @@ def CalcFavScores(config, prices):
 #        scoreRanges.append((pos, outPer[i]))
 #        pos = outPer[i]
         
-    scoreRanges = config['outputRanges']
-    outDim = len(scoreRanges)
+    score_ranges = config['outputRanges']
+    out_dim = len(score_ranges)
         
-    out = np.zeros((list(prices.shape)+[outDim]), dtype=float)
-    for i, sRange in enumerate(scoreRanges):
-        out[:,:,i] = CalcFavourabilityScore(config, prices, sRange)
+    out = np.zeros((list(prices.shape)+[out_dim]), dtype=float)
+    for i, sRange in enumerate(score_ranges):
+        score = CalcFavourabilityScore(config, prices, sRange)
+        out[:,:,i] = FavourabilityScoreOutputTransform(config, score)
 
     return out
 
     
-
 #==============================================================================
 def TranslateVector(input, translation, padding=0):
     """
@@ -164,9 +165,9 @@ def TranslateVector(input, translation, padding=0):
     output = np.ones(input.shape) * padding
     valid = np.zeros(input.shape, dtype=int)
     
-    toCut = min(len, abs(translation))
-    topIdx = len-toCut
-    botIdx = toCut
+    to_cut = min(len, abs(translation))
+    topIdx = len-to_cut
+    botIdx = to_cut
     if translation >= 0: # Move to the right
         output[:,botIdx:] = input[:,:topIdx]
         valid[:,botIdx:] = 1
@@ -176,52 +177,117 @@ def TranslateVector(input, translation, padding=0):
     return (output, valid)
 
 #==============================================================================
-def CalcFavourabilityScore(config, price_Data, tRange):
+def CalcFavourabilityScore_prev(config, price_data, t_range):
     """ 
-    price_Data is a numpy array of shape= (samples, timesteps)
-    price_Data should have each item corresponding to 1 trading day
+    Calculates favourability score for a number of stocks and single time span.
+    price_data is a numpy array of shape= (stocks, timesteps)
+    price_data should have each item corresponding to 1 trading day
     It should have no gaps, and should be adjusted for inflation
     It should be linear (not logarithmic)
+    Returns 'score', which has the same shape as price_data
+    t_range is a list 
     """
     
     # STEP 1: Create a vector containing the future day offsets on which prices will be compared
     # These days will be exponentially spaced.  y = a*exp(b*x) + c.
     
-    numPoints = min(tRange[1]-tRange[0], 80)
+    num_points = min(t_range[1]-t_range[0], 80)
     padding = 0
     
     b = 2 # in y = a*exp(b*x) + c.  'b' affects linearity
-    a = (tRange[1]-1) / (np.exp(b)-1)
+    a = (t_range[1]-1) / (np.exp(b)-1)
     c = 1-a
     
-    seedBot = np.log((tRange[0]-c)/a)/b
-    seeds = np.linspace(seedBot,1,numPoints)
-    checkDays = np.floor(a*np.exp(seeds*b)+c).astype(int)
+    seed_bot = np.log((t_range[0]-c)/a)/b
+    seeds = np.linspace(seed_bot,1,num_points)
+    check_days = np.floor(a*np.exp(seeds*b)+c).astype(int)
     
     # STEP 2
-    score = np.zeros(price_Data.shape)
-    validity = np.zeros(price_Data.shape)
+    score = np.zeros(price_data.shape)
+    validity = np.zeros(price_data.shape)
     
     # Get all of the future prices - positives
-    for dayIdx in checkDays:
-        [thisVec,  thisValid] = TranslateVector(price_Data,-dayIdx, padding)
-        score = score + thisVec
-        validity = validity + thisValid
+    for day_idx in check_days:
+        [this_vec,  this_valid] = TranslateVector(price_data,-day_idx, padding)
+        score = score + this_vec
+        validity = validity + this_valid
     
     # Account for all of the subtractions of the current prices
-    score = score - price_Data * validity
+    score = score - price_data * validity
     # Normalise
     if config['pullUncertainYTo0']:
-        score = (score / numPoints) / price_Data
+        score = (score / num_points) / price_data
     else:
-        score = (score / validity) / price_Data
+        score = (score / validity) / price_data
         
     # There will be data at the end that is NaN/Inf
     # Extend the last valid score out to the end
-    score[:,-tRange[0]:] = score[:,-tRange[0]-1:-tRange[0]]
+    score[:,-t_range[0]:] = score[:,-t_range[0]-1:-t_range[0]]
+    
+    return score
+
+#==============================================================================
+def CalcFavourabilityScore(config, price_data, t_range):
+    """ 
+    Calculates favourability score for a number of stocks and single time span.
+    price_data is a numpy array of shape= (stocks, timesteps)
+    price_data should have each item corresponding to 1 trading day
+    It should have no gaps, and should be adjusted for inflation
+    It should be linear (not logarithmic)
+    Returns 'score', which has the same shape as price_data
+    t_range is a list of 2 values. Start and end of the period of interest (inclusive)
+    """
+    
+    # Hour 2 is 86% the weight of hour 2
+    # Hour 10 is 67% the weight of hour 5
+    # Hour 20 is 60% the weight of hour 10
+    # 200 hours is 51% the weight of 100 hours
+    fn_weight = lambda t: 1/(t+5) # The value '5' could be tuned, but I think '5' is appropriate
+    window = fn_weight(np.arange(t_range[0], t_range[1]+1))
+    window /= window.sum() # make the window.sum() equal to 1
+
+    score = np.zeros(price_data.shape) # output
+
+    # numpy.correlate only works on 1D, so I need to use a loop
+    ones = np.ones_like(price_data[0,:], dtype=np.float64)
+    sum = np.zeros_like(ones, dtype=np.float64)
+
+    count_full = np.correlate(ones, window, 'full')
+    count = np.zeros_like(ones, dtype=np.float64)
+    count[0:-t_range[0]] = count_full[t_range[1]:]
+    count[-t_range[0]:] = 0
+
+    for i in range(price_data.shape[0]):
+        price = price_data[i,:]
+        sum_full = np.correlate(price, window, 'full')
+
+        # The first t_range[1] values of the convolution will not
+        # contribute to the score for any times in the original series.
+        # The final t_range[0] values in the original series will
+        # not have ANY information (because we can't read the future)
+        sum[0:-t_range[0]] = sum_full[t_range[1]:]
+        # Other values are 0
+        sum[-t_range[0]:] = 0
+
+        fav = (sum - count * price) / price
+        if not config['pullUncertainYTo0']:
+            fav /= count
+            #fav[np.logical_not(np.isfinite(fav))] = 0
+            # There will be data at the end that is NaN/Inf
+            # Extend the last valid score out to the end
+            fav[-t_range[0]:] = fav[-t_range[0]-1]
+        score[i,:] = fav
+
+    return score
 
 
-    # STEP 3: (optional) Apply an output transform
+#==============================================================================
+def FavourabilityScoreOutputTransform(config, score):
+    """
+    Apply an output transform (if config says so)
+    score is input and output
+    """
+
     if config['binarise']:
         # Minimise outliers reduces the size of outliers
         # Transform towards BINARY output
@@ -247,8 +313,7 @@ def CalcFavourabilityScore(config, price_Data, tRange):
         side = score[ind]
         median = np.median(side)
         score[ind] = (np.tanh((side/median-config['selectivity'])*config['ternarise']) + 1) * median
-    
-    
+
     return score
 
 #==========================================================================
@@ -542,4 +607,3 @@ def AddChangeVsMarket(r, dfs):
     
     ScaleData(dfs, newCols)
     return
-    
