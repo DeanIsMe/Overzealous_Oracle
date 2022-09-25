@@ -91,18 +91,19 @@ def GetConfig():
     # ****************************
     # OUTPUT (TARGET) DATA
 
+    # Favourability Score: CompareToFutureData
     # config['outputRanges'] = [[1,5], [6,25], [26,125]] # The ranges over which to calculate output scores
     # Starts at 1
     # I'm using hourly data
     config['outputRanges'] = [[1,5], [6,25], [26,125]]
     # Also defines the number of output periods
-
-    # Favourability Score: CompareToFutureData
+    
     # How many steps to exclude from training because the 'to buy' score is not well defined
     config['excludeRecentSteps'] = 50 # Tradeoff between how recent, and accuracy to 'to Buy' score
     
-    # When the date is within 'excludeRecentSteps' of the end of the data, then
-    # the 'favourability' score cannot be completely calculated.
+    # Favourability Score looks X days into the future. When there aren't X days
+    # of future data available, the calculation is incomplete. 
+    # pullUncertainYTo0 indicates how to handle this incomplete calculation.
     # When pullUncertainYTo0 is true, the favourability score will be pulled
     # more towards zero as the more and more dates are missing. When it's
     # false, the score will be calculated assuming that the price does not vary
@@ -235,6 +236,13 @@ def PrintConfigString(c):
         s += f"**Divergence** lengths of "
         for windowLen in c['dvgLengths']:
             s += f"{windowLen}, "
+        s += "hrs  \n"
+
+
+    if c['changeVsMarketLens']:
+        s += f"**vsMarket** lengths of "
+        for thisLen in c['changeVsMarketLens']:
+            s += f"{thisLen}, "
         s += "hrs  \n"
     
 

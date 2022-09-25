@@ -467,12 +467,10 @@ def score_sq_any(y_true, y_pred):
     I COULD calculate the neutral score once and save it, then assume it will be the same for future calls.
     """
     seNeutral = tf.square(y_true)
-    seNeutral = tf.reduce_mean(seNeutral, axis=-2) # Average across timesteps
-    seNeutral = tf.reduce_mean(seNeutral, axis=0) # Average across samples
+    seNeutral = tf.reduce_mean(seNeutral, axis=[-2, 0]) # Average across timesteps & samples
 
     se = tf.square(tf.subtract(y_pred, y_true))
-    se = tf.reduce_mean(se, axis=-2) # Average across timesteps
-    se = tf.reduce_mean(se, axis=0) # Average across samples
+    se = tf.reduce_mean(se, axis=[-2, 0]) # Average across timesteps & samples
 
     # Calculate the score for each
     scores = tf.divide(seNeutral, se)
@@ -482,10 +480,11 @@ def score_sq_any(y_true, y_pred):
 def dynamism(y_true, y_pred):
     """Custom keras metric function
     Assesses how much the prediction changes
+    y_true and y_pred shape is (batch_size, timesteps, features)
+    Return shape is not important, because Keras reduces the output to a single value (by averaging).
     """
-    diff = tf.subtract(y_pred[:,:-10,:], y_pred[:,10:,:])
-    out = tf.reduce_mean(tf.abs(diff), axis=-2) # average over the time series
-    return tf.reduce_mean(out, axis=-1) # average out the 'outFeature' axis
+    return tf.abs(tf.subtract(y_pred[:,:-10,:], y_pred[:,10:,:]))
+
 
 #==========================================================================
 def MakeNetwork(r):
@@ -874,11 +873,14 @@ class CustomModel(tf.keras.Model):
   def test_step(self, data):
     """The logic for one evaluation step.
     Overridden by Dean to allow for the val_x to have more timesteps than
-    val_y. In this case, y_pred is truncated to the length of val_y, cutting
+    val_y. With this function, y_pred is truncated to the length of val_y, cutting
     off the initial entries.
     The purpose here is that the start of the prediction is used for
     building state and not for evaluation. That section can overlap with 
     the training set as it's not used for evaluation.
+
+    Updated note: Instead of this, I could perhaps just make a lambda layer that cuts off 
+                  a number of timesteps. See https://stackoverflow.com/a/54750309
 
     This method can be overridden to support custom evaluation logic.
     This method is called by `Model.make_test_function`.
