@@ -68,7 +68,7 @@ pair_summary = dataLoader.GetPairsSummary()
 pair_summary = pair_summary[pair_summary.last_time == pair_summary.last_time.max()]
 
 # Keep only pairs that are paired with USD
-pair_summary = pair_summary[pair_summary['pair'].apply(lambda x: x[-3:] == 'usd' or x[-4:] == 'usdt')]
+pair_summary = pair_summary[pair_summary['pair'].apply(lambda x: x[-3:] == 'usd' or x[-4:] == 'usdt' or x[-4:] == 'usdc')]
 
 # Keep only pairs that have the desired duration available
 totalHours = corrCfg.numHours + corrCfg.valNumHours

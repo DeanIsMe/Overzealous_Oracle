@@ -49,7 +49,7 @@ class DataLoader:
 
         Args:
             filename (str): the file to load from
-            coins (list): a list of coins of interest
+            coins (list): a list of coins of interest. The reference coin will be automatically chosen (USD)
             num_hours (int): the number of hours (data points) for each coin
 
         Returns:
@@ -60,11 +60,11 @@ class DataLoader:
         dfs = [] # Output is a list of dataframes
 
         # For each coin, pick a pair and extract the desired time
-        base_options = ['usd', 'usdt']
+        ref_options = ['usd', 'usdt', 'usdc'] # Order of preference
         for coin in coins:
             coin_found = False
             max_rows_avail = 0
-            for base in base_options:
+            for base in ref_options:
                 pair_check = coin.lower() + base
                 if pair_check in data:
                     # This trading pair exists. Check the duration
@@ -433,7 +433,6 @@ def ReadKrakenCsv(csv_dir):
     total_market_change = CalcChangeVsMarket(data_hist)
 
     # Save the data
-    
     date_str = pd.to_datetime(time_last_data, unit='s').strftime('%Y-%m-%d')
     save_filename = f'./indata/{date_str}_price_data_60m.pickle'
     filehandler = open(save_filename, 'wb')
@@ -651,9 +650,10 @@ def CalcChangeVsMarket(data):
     usd_pairs = set()
 
     for pair in data.keys():
-        if pair[-3:] == 'usd':
+        nom, ref = GetPairNomRef(pair)
+        if ref == 'usd':
             usd_pairs.add(pair)
-            paired_to_usd.add(pair[:-3])
+            paired_to_usd.add(nom)
 
     # Calculate volume_usd (price * vol) for all USD pairs
     # volume_usd is always in USD
@@ -666,12 +666,11 @@ def CalcChangeVsMarket(data):
     # This is to make sure that I account for all (most) of the volume
     # This will add pairs using EUR, BTC, and USDT.
     for pair in data.keys():
-        if (ref:=pair[-3:]) in paired_to_usd:
+        nom, ref = GetPairNomRef(pair)
+        if ref in paired_to_usd:
 
             # print(f"Extra pair {pair:8s}")
             df = data[pair]
-
-            nom = pair[:-3] # nominated currency (as opposed to reference currency). Pair order is "nominated-reference"
 
             df_refusd = data[ref + 'usd'] # Should always succeed, because paired_to_usd is known
             idx_common = df.index.intersection(df_refusd.index)
@@ -693,7 +692,7 @@ def CalcChangeVsMarket(data):
             # I'm doing ".sum() / avg_len" instead of ".mean()"", because there's different behaviour
             # when fewer than avg_len data points are available. ".sum() / avg_len" will rise from 0.
             df['volume_usd'] = df['volume_usd'].rolling(avg_len, min_periods=1).sum() * 1/avg_len
-            nom = pair[:-3]
+            nom, ref = GetPairNomRef(pair)
             if (pair in usd_pairs) and (nom not in fiat): # Include only tokens (exclude fiat)
                 ser_volume_usd = ser_volume_usd.add(df['volume_usd'], fill_value=0)
 
@@ -714,7 +713,7 @@ def CalcChangeVsMarket(data):
     ser_sum = pd.Series(dtype='float64')
     ser_count = pd.Series(dtype='float64')
     for pair in usd_pairs:
-        nom = pair[:-3]
+        nom, ref = GetPairNomRef(pair)
         if nom not in fiat: # Include only tokens (exclude fiat)
             df = data[pair]
             diff = df['close'].pct_change()
@@ -750,6 +749,18 @@ def CalcChangeVsMarket(data):
     return ser_market_ratio
 
 
+# ******************************************************************************
+# GetPairNomRef 
+# Returns the pair string split into (nominated, reference)
+# Usage: nom, ref = GetPairNomRef(pair)
+# Other terminology: base=nominated.  Quoted=reference.  
+# Pair order is nominated-reference. E.g. in NANO-USD, NANO=nominated & USD=reference.
+def GetPairNomRef(pair):
+    # Logic: all 'reference' pairs are 3 character long, except for usdt and usdc
+    if pair[-4:] in ['usdc', 'usdt']:
+        return (pair[:-4], pair[-4:])
+    else:
+        return (pair[:-3], pair[-3:])
 
 
 #%%
