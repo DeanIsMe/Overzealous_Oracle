@@ -285,7 +285,6 @@ def _CalcIndices(tMax, dataRatios, exclude):
     tOut = {'train':tInd[0], 'val':tInd[1], 'test':tInd[2]}
     return tOut
 
-
 #==========================================================================
 def PlotTrainMetrics(trainHistory, axIn=None, legend=True, plotWidth=7):
     #Plot Training
@@ -584,7 +583,6 @@ def MakeNetwork(r):
     r.modelEpoch = -1
     r.trainHistory = {}
 
-    # mape = mean absolute percentage error
     r.model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mean_absolute_error', 'mean_squared_error', \
         score_sq_any, dynamism])
     #r.model.build(input_shape=(None, r.inFeatureCount))
@@ -907,7 +905,7 @@ class CustomModel(tf.keras.Model):
     x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
     # Compute predictions
     y_pred = self(x, training=False)
-    # CUSTOM LINE: shrink y_pred to the size of y
+    # CUSTOM LINE: shrink y_pred to the timestep count of y
     # (x can have more timesteps than y)
     y_pred = y_pred[:, -y.shape[-2]:, :] # samples, timesteps, features
     # END CUSTOM LINE
@@ -979,7 +977,7 @@ def MakeWaveNetStack(layer_input, factor:int, module_count:int, out_width:int, n
     Args:
         layer_input: [description]
         factor (int): the kernel_size and dilation factor (usually 2)
-        module_count (int): Each module increases receptive filed by 'factor'. Total receptive field will be factor**modulecount
+        module_count (int): Each module increases receptive field by 'factor'. Total receptive field will be factor**modulecount
         out_width (int): filter count
         name ([type], optional): [description]. Defaults to None.
 

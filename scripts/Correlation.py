@@ -126,7 +126,6 @@ def CalcCorr(price_dict, steps_past, avg_steps=3):
     t1 = Timer()
 
     cmp_offset = steps_past - (avg_steps-1) # <avg_steps> into the past are handled by the rolling window. Add this many extra steps to get to <max_steps_past>
-    #cmp_offset = steps_past # !@#$
 
     prices_smth = {}
     for pair in price_dict:

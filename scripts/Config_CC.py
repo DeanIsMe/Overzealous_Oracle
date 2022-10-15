@@ -15,8 +15,8 @@ def GetConfig():
     # INPUT DATA
 
     # Raw data
-    config['coinList'] = ['BTC','ETH','SOL'] # a list of coin strings
-    config['numHours'] = 24*365*1
+    config['coinList'] = ['BTC','ETH'] # a list of coin strings
+    config['numHours'] = 24*365*5
 
     # ****************************
     # INPUT FEATURES
@@ -98,8 +98,8 @@ def GetConfig():
     config['outputRanges'] = [[1,5], [6,25], [26,125]]
     # Also defines the number of output periods
     
-    # How many steps to exclude from training because the 'to buy' score is not well defined
-    config['excludeRecentSteps'] = 50 # Tradeoff between how recent, and accuracy to 'to Buy' score
+    # How many steps to exclude from training because the 'favourability' score is not well defined
+    config['excludeRecentSteps'] = 50 # Tradeoff between how recent, and accuracy to 'favourability' score
     
     # Favourability Score looks X days into the future. When there aren't X days
     # of future data available, the calculation is incomplete. 
@@ -158,7 +158,7 @@ def GetConfig():
     config['wnWidth'] = 48 # Width of all dense and conv layers
 
     # SYSTEM 2: RNN (LSTM/GRU)
-    config['rnnType'] = 'none' # 'lstm' or 'gru' or 'none'
+    config['rnnType'] = 'gru' # 'lstm' or 'gru' or 'none'
     config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM/GRU to reduce the size. 0 to disable.
     config['rnnWidths'] = [128] # Number of neurons in each LSTM/GRU layer. They're cascaded. [] to disable
 
@@ -166,7 +166,7 @@ def GetConfig():
     config['denseWidths'] = [48] # [256, 128, 64, 32, 16] # These layers are added in series after LSTM and before output layers. Default: none
 
     # Other model parameters
-    config['batchNorm'] = True # applies to conv, rnn, and dense layer modules
+    config['batchNorm'] = True # Batch Normalisation. applies to conv, rnn, and dense layer modules
 
     config['regularizerType'] = 'l2' # None or 'l1' or 'l2' or 'l1_l2'
     config['regularizationRateL1'] = 0.01 # default 0.01. aka alpha

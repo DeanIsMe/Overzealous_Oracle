@@ -244,7 +244,10 @@ NeuralNet.TestNetwork(r, prices, inData, outData)
 printmd('### Make & train DONE')
 
 
-
+def ContinueTraining(toEpochCount):
+    # This is how one would continue training, if desired
+    r.config['epochs'] = toEpochCount
+    NeuralNet.TrainNetwork(r, inData, outData)
 
 
 # ** **************************************************************************************************************
