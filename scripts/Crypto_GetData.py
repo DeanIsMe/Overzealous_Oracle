@@ -543,8 +543,7 @@ def DataScrubbing(data, timestep):
     total_gaps_filled = 0
     total_rows_removed = 0
     pairs_to_delete = []
-    for pair in data.keys():
-        df = data[pair]
+    for pair, df in data.items():
         rows_initial = len(df.index)
         if rows_initial < 100:
             print(f"[{pair:9s}] Had {rows_initial:6} rows. Not enough! REMOVED PAIR")
@@ -664,13 +663,12 @@ def CalcChangeVsMarket(data):
 
     # Find pairs that don't include USD, but can be converted to USD
     # This is to make sure that I account for all (most) of the volume
-    # This will add pairs using EUR, BTC, and USDT.
-    for pair in data.keys():
+    # This will add pairs using EUR, BTC, USDT, etc.
+    for pair, df in data.items():
         nom, ref = GetPairNomRef(pair)
         if ref in paired_to_usd:
 
             # print(f"Extra pair {pair:8s}")
-            df = data[pair]
 
             df_refusd = data[ref + 'usd'] # Should always succeed, because paired_to_usd is known
             idx_common = df.index.intersection(df_refusd.index)
@@ -686,8 +684,7 @@ def CalcChangeVsMarket(data):
 
     # Smooth and sum to get total volume in USD
     ser_volume_usd = pd.Series(dtype='float64')
-    for pair in data.keys():
-        df = data[pair]
+    for pair, df in data.items():
         if 'volume_usd' in df.columns:
             # I'm doing ".sum() / avg_len" instead of ".mean()"", because there's different behaviour
             # when fewer than avg_len data points are available. ".sum() / avg_len" will rise from 0.
@@ -724,8 +721,7 @@ def CalcChangeVsMarket(data):
     ser_market_ratio = ser_market_diff + 1. # Ratios of changes
 
     # For each coin, for each time step: calculate the performance vs the market
-    for pair in data.keys():
-        df = data[pair]
+    for pair, df in data.items():
         idx_common = df.index.intersection(ser_market_ratio.index)
         ratio = df['close'].pct_change() + 1
         ratio.iloc[0] = 1.

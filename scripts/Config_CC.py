@@ -13,6 +13,9 @@ def GetConfig():
 
     # ****************************
     # INPUT DATA
+    # List of all coins that have a 
+    coins_mktcap_001 = ['btc', 'eth', 'eur', 'etc', 'bch', 'xrp', 'xdg', 'ada', 'sol', 'eos', 'ltc', 'link', 'dot', 'xlm', 'xtz', 'zec', 'mana', 'xmr', 'gbp', 'atom', 'matic', 'luna', 'dash', 'algo', 'ape', 'sc', 'fil', 'trx', 'sand', 'flow', 'rep', 'omg', 'ksm', 'oxt', 'avax', 'yfi', 'crv', 'waves', 'lrc', 'uni', 'dai', 'grt', 'gno', 'shib', 'storj', 'aave', 'bat', 'luna2', 'movr', 'enj', 'kava', 'mina', 'nano', 'dydx', 'qtum', 'aud', 'keep', 'axs', 'mln', 'icx', 'comp', 'ant', 'paxg', 'glmr', 'ocean', 'snx', 'knc', 'lpt', 'cqt', 'sushi', 'lsk', 'perp', 'srm', 'sdn', 'chz', 'icp', 'repv2', 'ewt', 'ctsi']
+    coins_mktcap_01 = ['btc', 'eth', 'eur', 'etc', 'bch', 'xrp', 'xdg', 'ada', 'sol', 'eos', 'ltc', 'link', 'dot', 'xlm', 'xtz', 'zec', 'mana', 'xmr', 'gbp', 'atom', 'matic', 'luna', 'dash', 'algo', 'ape', 'sc', 'fil', 'trx', 'sand', 'flow', 'rep', 'omg', 'ksm']
 
     # Raw data
     config['coinList'] = ['BTC','ETH'] # a list of coin strings
@@ -41,8 +44,7 @@ def GetConfig():
     # INPUT DATA HANDLING
 
     config['dataRatios'] = [0.80, 0.20 ,0.00] # Training, Validation, Testing
-    #note: 03/02/2018 I am using the same set for validation and testing
-    # I'm just using the 'test' set to generate state for prediction
+
 
     # Input data and output data are divided by 90th percentile. Then, they
     # are multiplied by the 'scale'. This has a massive impact on the training
@@ -98,7 +100,7 @@ def GetConfig():
     config['outputRanges'] = [[1,5], [6,25], [26,125]]
     # Also defines the number of output periods
     
-    # How many steps to exclude from training because the 'favourability' score is not well defined
+    # How many steps to exclude from training & validating because the 'favourability' score is not well defined
     config['excludeRecentSteps'] = 50 # Tradeoff between how recent, and accuracy to 'favourability' score
     
     # Favourability Score looks X days into the future. When there aren't X days
@@ -174,8 +176,6 @@ def GetConfig():
 
     config['dropout'] = 0.2 # Dropout_rate of layer applied before each layer. Set to 0 to disable
     
-
- 
 
     
     # ****************************

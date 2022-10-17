@@ -621,6 +621,8 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
     trainX = [arr[:,r.tInd['train'],:] for arr in inData]
     trainY = outData[:, r.tInd['train']]
 
+    # TODO use masking layer mask out all gap filled timesteps
+
     r.neutralTrainAbsErr = np.mean(np.abs(trainY))
     r.neutralValAbsErr = np.mean(np.abs(valY))
     r.neutralTrainSqErr = np.mean(np.abs(trainY)**2)
@@ -876,9 +878,8 @@ class CustomModel(tf.keras.Model):
     The purpose here is that the start of the prediction is used for
     building state and not for evaluation. That section can overlap with 
     the training set as it's not used for evaluation.
-
-    Updated note: Instead of this, I could perhaps just make a lambda layer that cuts off 
-                  a number of timesteps. See https://stackoverflow.com/a/54750309
+    Original location of function:
+    venv\Lib\site-packages\tensorflow\python\keras\engine\training.py
 
     This method can be overridden to support custom evaluation logic.
     This method is called by `Model.make_test_function`.
