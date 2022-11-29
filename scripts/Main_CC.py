@@ -209,10 +209,11 @@ if 1:
 
 
 # Set the seed for repeatable results (careful with this use)
-# print('FIXING SEED FOR REPEATABLE RESULTS')
-# from numpy.random import seed
-# seed(5)
-# tf.random.set_seed(5)
+if False:
+    printmd('**FIXING SEED FOR REPEATABLE RESULTS**')
+    from numpy.random import seed
+    seed(5)
+    tf.random.set_seed(5)
 
 printmd("## Start single train")
 r = ModelResult()
@@ -242,7 +243,6 @@ else:
 NeuralNet.TestNetwork(r, prices, inData, outData)
 
 printmd('### Make & train DONE')
-
 
 def ContinueTraining(toEpochCount):
     # This is how one would continue training, if desired

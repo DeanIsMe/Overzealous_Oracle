@@ -484,6 +484,12 @@ def dynamism(y_true, y_pred):
     """
     return tf.abs(tf.subtract(y_pred[:,:-10,:], y_pred[:,10:,:]))
 
+#==========================================================================
+def metric_print(y_true, y_pred):
+    """ For testing: prints the shape of inputs"""
+    print(f"y_true:{y_true.shape},  y_pred:{y_pred.shape}")
+    return 0
+
 
 #==========================================================================
 def MakeNetwork(r):
@@ -516,6 +522,7 @@ def MakeNetwork(r):
             # FilterNet style conv
             convLayers = []
             this_layer = feeds[FeedLoc.conv]
+            
             for i in range(convCfg['layerCount']):
                 convLayers.append(MakeLayerModule('conv', this_layer, k_reg=make_reg(reg_def), out_width=convCfg['filters'][i],
                     kernel_size=convCfg['kernelSz'][i], dilation=convCfg['dilation'][i],
