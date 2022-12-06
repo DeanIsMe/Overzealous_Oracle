@@ -33,8 +33,11 @@ class ModelResult():
         self.isBatch = False
         self.batchName = ''
         self.batchRunName = ''
-        self.sampleCount = 0
-        self.timesteps = 0
+        self.sampleCount = 0 # Count of different coins
+        self.timestepsPerCoin = 0 # The max number of timesteps to retrieve for each coin/pair
+        self.timestepsPerSegment = 0 # Each series is split into segments before feeding into the network
+        self.segmentCount = 0
+
         self.inFeatureCount = 0
         self.outFeatureCount = 0
                

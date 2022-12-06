@@ -15,7 +15,7 @@ from pandas.core.frame import DataFrame
 
 #%%
 
-from DataTypes import printmd
+from DataTypes import ModelResult, printmd, SecToHMS
 from scripts.DataTypes import FeedLoc
 
 #==========================================================================
@@ -28,10 +28,10 @@ def PlotInData(r, dfs, sample=0, tRange=2000, colPatterns=[]):
         a partial string is sufficient to match
     """
     if type(tRange) == int:
-        tRange = min(tRange, r.timesteps)
+        tRange = min(tRange, r.timestepsPerCoin)
         tInd = np.array(range(tRange))
     else:
-        tRange[1] = min(tRange[1], r.timesteps)
+        tRange[1] = min(tRange[1], r.timestepsPerCoin)
         tInd = np.array(range(tRange[0], tRange[1]))   
     x = tInd
     fig, ax = plt.subplots(figsize=(r.config['plotWidth'], 4))
@@ -68,19 +68,20 @@ def PlotInData(r, dfs, sample=0, tRange=2000, colPatterns=[]):
 def PlotOutData(r, prices, output, sample=0, tRange=0):
     # Plot output
     if type(tRange) == int:
-        tInd = range(r.timesteps)
+        tInd = range(r.timestepsPerCoin)
     else:
         tInd = range(tRange[0], tRange[1])
-    outDim = output.shape[-1]            
+    r
+    outDim = r.outFeatureCount
     x = tInd
     fig, (ax1, ax2) = plt.subplots(2, sharex=True, figsize=(r.config['plotWidth'] , 7))
     fig.tight_layout()
-    ax1.plot(x,prices[sample, tInd])
+    ax1.plot(x,prices[sample][tInd])
     ax1.set_title('Price of {}'.format(r.config['coinList'][sample]))
     ax1.grid()
     lines = list(range(outDim))
     for i in range(outDim):
-        lines[i], = ax2.plot(x,output[sample,tInd,i], label='Out{0}({1})'.format(i, r.config['outputRanges'][i]))
+        lines[i], = ax2.plot(x,output[sample][tInd,i], label='Out{0}({1})'.format(i, r.config['outputRanges'][i]))
     l0, = ax2.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
     ax2.legend(handles = lines)
     ax2.set_title('Output for: {}'.format(r.config['coinList'][sample]))
@@ -103,9 +104,14 @@ def PrintInOutDataRanges(dfs, outData):
 
         dfq = pd.DataFrame(series)
 
-        outNums = np.transpose(np.percentile(outData, q*100., axis=1))
-        for i in range(outData.shape[-1]):
-            dfq[f'out_{i}'] = outNums[i]
+        outFeatures = outData[0].shape[-1]
+
+        odq = np.zeros((len(outData), outFeatures))
+        for i,od in enumerate(outData):
+            odq[i,:] = np.percentile(od, q*100., axis=-2)
+
+        for j in range(outFeatures):
+            dfq[f'out_{j}'] = odq[:,j]
 
         dfq.name = q
         values.append(dfq)
@@ -115,30 +121,24 @@ def PrintInOutDataRanges(dfs, outData):
 #==========================================================================
 def CalcFavScores(config, prices):
     """
-    prices should have shape of (stocks, timesteps)
-    out will have shape of (stocks, timesteps, numPeriods)
+    prices is a list of 1D np arrays
+    out is a list of 2D np arrays of shape (timesteps, numPeriods)
     The number of periods is defined by the length of config['outputRanges']
-    Can use this to output short, medium and long term scores
+    Can use different periods to output short, medium and long term scores
     """
-    # If it's just a single row, add an extra dimension
-    if (prices.ndim != 2):
-        prices = prices.reshape(1,prices.shape[-1])
-    
-#    outPer = config['outputPeriods']
-#    outDim = len(outPer)
-#    pos = 1
-#    scoreRanges = list()
-#    for i in range(outDim):
-#        scoreRanges.append((pos, outPer[i]))
-#        pos = outPer[i]
-        
+    # If it's just a single set of prices, put it in a list
+    if type(prices) != list:
+        prices = [prices]
+            
     score_ranges = config['outputRanges']
     out_dim = len(score_ranges)
-        
-    out = np.zeros((list(prices.shape)+[out_dim]), dtype=float)
+
+    out = [np.zeros([len(p), out_dim], dtype=float) for p in prices]
     for i, sRange in enumerate(score_ranges):
-        score = CalcFavourabilityScore(config, prices, sRange)
-        out[:,:,i] = FavourabilityScoreOutputTransform(config, score)
+        for coinIdx, price in enumerate(prices):
+            out[coinIdx][:,i] = CalcFavourabilityScore(config, price, sRange)
+    
+    out = FavourabilityScoreOutputTransform(config, out)
 
     return out
 
@@ -227,14 +227,13 @@ def CalcFavourabilityScore_prev(config, price_data, t_range):
     return score
 
 #==============================================================================
-def CalcFavourabilityScore(config, price_data, t_range):
+def CalcFavourabilityScore(config, price, t_range):
     """ 
     Calculates favourability score for a number of stocks and single time span.
-    price_data is a numpy array of shape= (stocks, timesteps)
-    price_data should have each item corresponding to 1 trading day
-    It should have no gaps, and should be adjusted for inflation
+    price_data is a 1D numpy array
+    It should already be processed (no gaps, adjusted for inflation)
     It should be linear (not logarithmic)
-    Returns 'score', which has the same shape as price_data
+    Returns 'score', which has the same shape as price
     t_range is a list of 2 values. Start and end of the period of interest (inclusive)
     """
     
@@ -246,46 +245,38 @@ def CalcFavourabilityScore(config, price_data, t_range):
     window = fn_weight(np.arange(t_range[0], t_range[1]+1))
     window /= window.sum() # make the window.sum() equal to 1
 
-    score = np.zeros(price_data.shape) # output
+    ones = np.ones_like(price, dtype=np.float64)
 
-    # numpy.correlate only works on 1D, so I need to use a loop
-    ones = np.ones_like(price_data[0,:], dtype=np.float64)
+    sum_full = np.correlate(price, window, 'full')
+    # The first t_range[1] values of the convolution will not
+    # contribute to the score for any times in the original series.
+    # The final t_range[0] values in the original series will
+    # not have ANY information (because we can't read the future)
     sum = np.zeros_like(ones, dtype=np.float64)
+    sum[0:-t_range[0]] = sum_full[t_range[1]:]
+    # Other values are 0 # sum[-t_range[0]:] = 0
 
+    # Calculate 'count' by correlating with 'ones' instead of 'price'
     count_full = np.correlate(ones, window, 'full')
     count = np.zeros_like(ones, dtype=np.float64)
     count[0:-t_range[0]] = count_full[t_range[1]:]
-    count[-t_range[0]:] = 0
 
-    for i in range(price_data.shape[0]):
-        price = price_data[i,:]
-        sum_full = np.correlate(price, window, 'full')
+    fav = (sum - count * price) / price
+    if not config['pullUncertainYTo0']:
+        fav /= count
+        #fav[np.logical_not(np.isfinite(fav))] = 0
+        # There will be data at the end that is NaN/Inf
+        # Extend the last valid score out to the end
+        fav[-t_range[0]:] = fav[-t_range[0]-1]
 
-        # The first t_range[1] values of the convolution will not
-        # contribute to the score for any times in the original series.
-        # The final t_range[0] values in the original series will
-        # not have ANY information (because we can't read the future)
-        sum[0:-t_range[0]] = sum_full[t_range[1]:]
-        # Other values are 0
-        sum[-t_range[0]:] = 0
-
-        fav = (sum - count * price) / price
-        if not config['pullUncertainYTo0']:
-            fav /= count
-            #fav[np.logical_not(np.isfinite(fav))] = 0
-            # There will be data at the end that is NaN/Inf
-            # Extend the last valid score out to the end
-            fav[-t_range[0]:] = fav[-t_range[0]-1]
-        score[i,:] = fav
-
-    return score
+    return fav
 
 
 #==============================================================================
-def FavourabilityScoreOutputTransform(config, score):
+def FavourabilityScoreOutputTransform(config, scores):
     """
     Apply an output transform (if config says so)
-    score is input and output
+    scores is a list of numpy arrays of shape (timesteps, score_range)
     """
 
     if config['binarise']:
@@ -294,9 +285,15 @@ def FavourabilityScoreOutputTransform(config, score):
         # The minimiseOutliers =0.1 gives almost no reduction
         # =1.0 gives a big reduction of outliers
         # =5.0 is pretty much binary
-        median = np.median(np.abs(score))
-        mult = median / config['binarise']
-        score = np.tanh(score/mult) * mult
+
+        # Calculate median over all coins together, but over each score range separately
+        allScoresArray = np.concatenate(scores)
+
+        for i in range(allScoresArray.shape[-1]):
+            median = np.median(np.abs(allScoresArray[:,i]))
+            mult = median / config['binarise']
+            for score in scores:
+                score[:,i] = np.tanh(score[:,i]/mult) * mult
         
     elif config['ternarise']:
         # Transform towards  buy/sell/neutral test
@@ -304,17 +301,22 @@ def FavourabilityScoreOutputTransform(config, score):
         # = 0.5 is less strict, but approaches binary
         # 1-3 seems preferable
         # selectivity 1=frequent buy/sell signals. 3=very picky buy/sell
-        ind = score>0
-        side = score[ind]
-        median = np.median(side)
-        score[ind] = (np.tanh((side/median-config['selectivity'])*config['ternarise']) + 1) * median
-        
-        ind = score<0
-        side = score[ind]
-        median = np.median(side)
-        score[ind] = (np.tanh((side/median-config['selectivity'])*config['ternarise']) + 1) * median
 
-    return score
+        # Calculate median over all coins together, but over each score range separately
+        allScoresArray = np.concatenate(scores)
+
+        for i in range(allScoresArray.shape[-1]):
+            scoreAllCoins = allScoresArray[:,i]
+            median = np.median(scoreAllCoins[scoreAllCoins > 0]) # scalar
+            for score in scores:
+                score[score > 0] = (np.tanh((score[score > 0]/median-config['selectivity'])*config['ternarise']) + 1) * median
+            
+            scoreAllCoins = allScoresArray[:,i]
+            median = np.median(scoreAllCoins[scoreAllCoins < 0]) # scalar
+            for score in scores:
+                score[score < 0] = (np.tanh((score[score < 0]/median-config['selectivity'])*config['ternarise']) + 1) * median
+
+    return scores
 
 #==========================================================================
 def ScaleData(dfs, cols, quantile=0.90):
@@ -356,16 +358,22 @@ def ShiftAndScaleCol(col):
     return temp * (1 / temp.abs().quantile(0.90))
 
 #==========================================================================
-def AddVix(r, dfs, prices):
+def AddVix(r:ModelResult, dfs, prices):
     """
     ## VIX
     Add volatility Index to a list of data frames
     """
-    volatility = CalcVolatility(r.config, prices)
+
+    # Cheap hack !@#$: convert list prices to single numpy array
+    pricesNp = np.zeros((len(prices), r.timestepsPerCoin))
+    for i, price in enumerate(prices):
+        pricesNp[i, 0:len(price)] = price
+
+    volatility = CalcVolatility(r.config, pricesNp)
     for i in np.arange(r.sampleCount):
         for j in np.arange(volatility.shape[-1]):
             col = 'vix{}'.format(j+1) # Column name
-            dfs[i].loc[:, col] = volatility[i,:,j]
+            dfs[i].loc[:, col] = volatility[i,:len(prices[i]),j]
     
     # Volatility Normaliser
     # Scale all by the same amount
@@ -404,7 +412,7 @@ def CalcVolatility(config, prices):
     """
     
     # Absolute Erraticism Score
-    samples = prices.shape[-2]
+    samples = len(prices)
     timesteps = prices.shape[-1]
     
     # Comparative Erraticism

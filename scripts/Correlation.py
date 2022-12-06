@@ -61,7 +61,6 @@ corrCfg = CorrConfig()
 
 # %%
 # Collect data
-#dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours']) # a list of data frames
 pair_summary = dataLoader.GetPairsSummary()
 
 # Remove all pairs that don't have up to date data

@@ -270,18 +270,19 @@ def Dim1ToTimeSteps(data, samples):
 #==========================================================================
 # SPLIT UP THE DATA
 # Training, Validation, Testing, and Exclude
-# Exclude fixed number of points at the end. Then split into:if
+# Exclude fixed number of points at the end. Then split into:
 # Testing, Training, Validation (in that order)
-def _CalcIndices(tMax, dataRatios, exclude):
+def _CalcIndices(tMax, dataRatios, excludeRecent):
     """Determine the indices for 3 ranges, with ratios defined by dataRatios
     """    
     pos = 0
     tInd = list(range(len(dataRatios)))
-    tEnd = tMax - exclude
+    tEnd = tMax - excludeRecent
     for i in range(len(dataRatios)):
         j = (i+2)%len(dataRatios) # Test data, then training, then validation
         tInd[j] = (np.arange(pos, min(tEnd, pos + round(tEnd*dataRatios[j])), dtype=int))
         pos += tInd[j].size
+
     tOut = {'train':tInd[0], 'val':tInd[1], 'test':tInd[2]}
     return tOut
 
@@ -611,7 +612,7 @@ def PrintNetwork(r):
 #==========================================================================
 def PrepTrainNetwork(r, inData, outData) -> dict :
     # Generate validation data
-    r.tInd = _CalcIndices(r.timesteps, r.config['dataRatios'], r.config['excludeRecentSteps'])
+    r.tInd = _CalcIndices(r.timestepsPerSegment, r.config['dataRatios'], r.config['excludeRecentSteps'])
 
     verbose = 1 if r.isBatch else 2
     
@@ -656,7 +657,7 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
         'y':trainY,
         'epochs':r.config['epochs'],
         'validation_data':(valX, valY),
-        'batch_size':r.sampleCount,
+        'batch_size':r.segmentCount,
         'shuffle':True,
         'verbose':0,
         'callbacks':callbacks,
@@ -802,33 +803,33 @@ def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 
     return
     
 #==========================================================================
-def TestNetwork(r, priceData, inData, outData, drawPlots=True):
-    tPlot = np.r_[0:r.timesteps] # Range of output plot (all data)
+def TestNetwork(r, priceData, inData, outData, segNames:list, drawPlots=1):
+    tPlot = np.r_[0:r.timestepsPerSegment] # Range of output plot (all data)
     if (r.config['dataRatios'][2] > 0.1):
         print('WARNING! TestNetwork uses Val Data as the test data, but Test Data also exists. ')
         print(r.config['dataRatios'])
     testI = r.tInd['val'] # Validation indices used as test
     
     #Predictions (entire input data range)
-    predictY = r.model.predict(inData, batch_size=r.sampleCount)
+    predictY = r.model.predict(inData, batch_size=r.segmentCount)
     
-    def _PlotOutput(priceData, out, predict, tRange, sample):
-        """Plot a single output feature of 1 sample"""
+    def _PlotOutput(priceData, out, predict, tRange, seg):
+        """Plot a single output feature of 1 segment"""
         plotsHigh = 1+r.outFeatureCount
         fig, axs = plt.subplots(plotsHigh, 1, sharex=True, figsize=(r.config['plotWidth'],3*plotsHigh))
         fig.tight_layout()
         
         ax = axs[0]
         ax.figure = fig # required to avoid an exception
-        ax.semilogy(tRange, priceData[sample, tRange]) # Daily data
-        ax.set_title('Prices. Sample {} ({}) [{}]'.format(r.config['coinList'][sample], sample, r.batchRunName))
+        ax.semilogy(tRange, priceData[seg][tRange]) # Daily data
+        ax.set_title('Prices. Segment {} ({}) [{}]'.format(segNames[seg], seg, r.batchRunName))
         ax.grid()
         
         for feature in range(r.outFeatureCount):
             ax = axs[1+feature]
             ax.figure = fig
-            predictYPlot = predict[sample, :, feature]
-            outPlot = out[sample, tRange, feature]
+            predictYPlot = predict[seg, :, feature]
+            outPlot = out[seg, tRange, feature]
             l1, = ax.plot(tRange, outPlot, label='Actual')
             l2, = ax.plot(tRange, predictYPlot, label='Prediction')
             l3, = ax.plot([r.tInd['train'][0], r.tInd['train'][0]], [np.min(outPlot), np.max(outPlot)], label='TrainStart')
@@ -838,7 +839,7 @@ def TestNetwork(r, priceData, inData, outData, drawPlots=True):
             ax.legend(handles = [l1, l2, l3, l4])
             ax.grid()
         # Save file if necessary
-        if r.isBatch and sample == 0:
+        if r.isBatch and seg == 0:
             try:
                 directory = './batches/' + r.batchName
                 if not os.path.exists(directory):
@@ -852,9 +853,11 @@ def TestNetwork(r, priceData, inData, outData, drawPlots=True):
     r.prediction = predictY
     # Plot prediction
 
-    if drawPlots:
-        for s in range(r.sampleCount):
+    if drawPlots: # drawPlots=1 means plot one segment. drawPlots=True means plot all segments.
+        for s in range(r.segmentCount):
             _PlotOutput(priceData, outData, predictY, tPlot, s)
+            if type(drawPlots) is int:
+                break # Just plot the first segment. Otherwise it'd be too spammy
     
     r.testAbsErr = np.sum(np.abs(predictY[:,testI,:] - outData[:,testI,:])) / predictY[:,testI,:].size
     r.neutralTestAbsErr = np.sum(np.abs(outData[:,testI,:])) / outData[:,testI,:].size
@@ -880,8 +883,8 @@ class CustomModel(tf.keras.Model):
   def test_step(self, data):
     """The logic for one evaluation step.
     Overridden by Dean to allow for the val_x to have more timesteps than
-    val_y. With this function, y_pred is truncated to the length of val_y, cutting
-    off the initial entries.
+    val_y. With this function, y_pred is truncated to the length of val_y,
+    cutting off the initial entries.
     The purpose here is that the start of the prediction is used for
     building state and not for evaluation. That section can overlap with 
     the training set as it's not used for evaluation.

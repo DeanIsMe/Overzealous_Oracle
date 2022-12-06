@@ -44,13 +44,13 @@ class DataLoader:
 
 
     #*******************************************************************************
-    def GetHourlyDf(self, coins, num_hours, verbose=1):
+    def GetHourlyDf(self, coins, num_hours, allow_partial=False, verbose=1):
         """Grab the hourly data from file, as a list of DataFrames
 
         Args:
-            filename (str): the file to load from
             coins (list): a list of coins of interest. The reference coin will be automatically chosen (USD)
             num_hours (int): the number of hours (data points) for each coin
+            allow_partial (bool): Support returning series with different lengths. False=Require all series to have num_hours
 
         Returns:
             list: A list of DataFrames. 1 per coin
@@ -60,7 +60,7 @@ class DataLoader:
         dfs = [] # Output is a list of dataframes
 
         # For each coin, pick a pair and extract the desired time
-        ref_options = ['usd', 'usdt', 'usdc'] # Order of preference
+        ref_options = ['usd'] # ['usd', 'usdt', 'usdc'] # Order of preference (only allowing 'usd')
         for coin in coins:
             coin_found = False
             max_rows_avail = 0
@@ -71,19 +71,20 @@ class DataLoader:
                     dur_avail = data[pair_check]['time'].iloc[-1] - data[pair_check]['time'].iloc[0]
                     rows_avail = len(data[pair_check])
                     max_rows_avail = max(max_rows_avail, rows_avail)
-                    if rows_avail > num_hours:
+                    if rows_avail > num_hours or allow_partial:
                         # Sufficient duration. Go with it!
+                        rows_to_get = min(rows_avail, num_hours) # count
                         if verbose > 0:
-                            print(f'[{coin}] Using trading pair {pair_check}')
+                            print(f'[{coin}] Using trading pair {pair_check} for {rows_to_get} steps')
                         # Extract the relevant rows and save
                         # copy() to avoid SettingWithCopyWarning error
-                        this_df = data[pair_check].iloc[-num_hours:].copy()
+                        this_df = data[pair_check].iloc[-rows_to_get:].copy()
                         this_df.name = coin
                         dfs.append(this_df)
                         coin_found = True
                         break
             if not coin_found:
-                printmd(f'\n **ERROR!**', color="0xFF8888")
+                printmd(f'**ERROR!**', color="0xFF8888")
                 print(f'GetHourlyDf: No valid pair found for {coin} in file {self.filename}.')
                 print(f"max_rows_avail={max_rows_avail}. Wanted {num_hours} rows.")
                 raise
@@ -96,7 +97,6 @@ class DataLoader:
         """Grab the hourly data from file, as a list of DataFrames
 
         Args:
-            filename (str): the file to load from
             pairs (list): a list of pairs to load
             num_hours (int): the number of hours (data points) for each coin
 

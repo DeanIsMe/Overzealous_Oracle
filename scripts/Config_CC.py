@@ -18,8 +18,9 @@ def GetConfig():
     coins_mktcap_01 = ['btc', 'eth', 'eur', 'etc', 'bch', 'xrp', 'xdg', 'ada', 'sol', 'eos', 'ltc', 'link', 'dot', 'xlm', 'xtz', 'zec', 'mana', 'xmr', 'gbp', 'atom', 'matic', 'luna', 'dash', 'algo', 'ape', 'sc', 'fil', 'trx', 'sand', 'flow', 'rep', 'omg', 'ksm']
 
     # Raw data
-    config['coinList'] = ['BTC','ETH'] # a list of coin strings
-    config['numHours'] = 24*365*5
+    config['coinList'] = ['BTC','SOL'] # a list of coin strings
+    config['numHours'] = 24*365*5 # Max number of hours to pull from each coin
+    config['segmentHours'] = 24*365 # Each coin's data will be split into segments of this size
 
     # ****************************
     # INPUT FEATURES
@@ -160,7 +161,7 @@ def GetConfig():
     config['wnWidth'] = 48 # Width of all dense and conv layers
 
     # SYSTEM 2: RNN (LSTM/GRU)
-    config['rnnType'] = 'gru' # 'lstm' or 'gru' or 'none'
+    config['rnnType'] = 'none' # 'lstm' or 'gru' or 'none'
     config['bottleneckWidth'] = 128 # A dense layer is added before the LSTM/GRU to reduce the size. 0 to disable.
     config['rnnWidths'] = [128] # Number of neurons in each LSTM/GRU layer. They're cascaded. [] to disable
 
@@ -183,6 +184,8 @@ def GetConfig():
 
     config['epochs'] = 8 # Number of complete passes of the data (subject to early stopping)
     
+    # The model relies on past data to make each prediction. Without sufficient past data, predictions
+    # will not be valid. Hence, we ignore some data points at the start of each series to build state.
     config['evaluateBuildStatePoints'] = 500 # The number of timesteps used to build state when predicting values for model validation during training
 
 
@@ -213,7 +216,8 @@ def PrintConfigString(c):
     s = "---  \n"
     s += "## Configuration  \n"
     s += "### Input data  \n"
-    s += f"**Coins**: {', '.join(c['coinList'])} for {c['numHours']} hrs ({c['numHours']/24/365:.2f} years)\\"
+    s += f"**Coins**: {', '.join(c['coinList'])} for {c['numHours']} hrs ({c['numHours']/24/365:.2f} years)\n"
+    s += f"  Split into segments of {c['segmentHours']} hrs ({c['segmentHours']/24/365:.2f} years)"
 
 
     s += "### Input features  \n"
