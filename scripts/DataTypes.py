@@ -35,18 +35,19 @@ class ModelResult():
         self.batchRunName = ''
         self.sampleCount = 0 # Count of different coins
         self.timestepsPerCoin = 0 # The max number of timesteps to retrieve for each coin/pair
-        self.timestepsPerSegment = 0 # Each series is split into segments before feeding into the network
-        self.segmentCount = 0
+        # Note that each series is split into segments before feeding into the network
+        # see config['segmentHours']
 
         self.inFeatureCount = 0
         self.outFeatureCount = 0
+        self.outColumns = [] # The column names of the outputs
                
         self.trainHistory = {} # hist.history, as returned by model.fit()
         self.coinList = []
         self.numHours = 0
 
         self.inFeatureList = None
-        self.feedLocFeatures = None
+        self.feedLocFeatures = None # For each input feed location, contains a list of column names to be used
         self.tInd = None # Dictionary with keys: 'train', 'val', 'test'. Values are the time indices in each set
         
         self.model = None

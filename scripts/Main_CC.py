@@ -78,7 +78,7 @@ if not 'dataLoader' in locals():
 
 
 # ******************************************************************************
-def PrepData(r:ModelResult, dfs:list):
+def CalcInOutData(r:ModelResult, dfs:list):
     """PrepData extracts input features, calculates output data, and formats
     it for input into the network.
 
@@ -96,7 +96,7 @@ def PrepData(r:ModelResult, dfs:list):
 
     # EXTRACT FEATURES FOR INPUT DATA
     FE.AddLogDiff(r, dfs)
-    FE.AddVix(r, dfs, prices)
+    FE.AddVix(r, dfs)
     FE.AddRsi(r, dfs)
     FE.AddEma(r, dfs)
     FE.AddDivergence(r, dfs)
@@ -106,36 +106,6 @@ def PrepData(r:ModelResult, dfs:list):
     #FE.AddSpread(r, dfs)
     #FE.PrepHighLowData(dfs) # High, Low, etc
 
-    # SPLIT THE DATA INTO SEGMENTS OF EQUAL TIME
-    dfsSeg = [] # dataframes where all have the same timesteps
-    segmentT = r.config['segmentHours'] # timesteps per segment
-    r.timestepsPerSegment = segmentT
-    totalTimesteps = 0
-    totalDiscardedTimesteps = 0
-    def CalcSegmentIndices(maxT, segmentT):
-        startIdx = []
-        endIdx = []
-        t = -segmentT
-        while -t <= maxT:
-            startIdx.append(t)
-            endIdx.append(t+segmentT if t+segmentT < 0 else None)
-            t -= segmentT
-        return startIdx, endIdx
-    startIdx, endIdx = CalcSegmentIndices(r.timestepsPerCoin, r.timestepsPerSegment)
-    
-    segNames = []
-    for df in dfs:
-        segmentCount = len(df)//r.timestepsPerSegment
-        for i in range(segmentCount):
-            dfsSeg.append(df.iloc[startIdx[i]:endIdx[i]])
-            segNames.append(f"{df.name}_{i}")
-        totalTimesteps += len(df)
-        totalDiscardedTimesteps += (len(df) - segmentCount * r.timestepsPerSegment)
-        # Partial data segments are discarded. TODO improve this
-    r.segmentCount = len(dfsSeg)
-    print(f"Split {len(dfs)} data series into {len(dfsSeg)} segments of max {segmentT} steps. {totalDiscardedTimesteps/totalTimesteps*100:.2f}% of data discarded.")
-
-
     # CREATE NUMPY ARRAYS AND ASSIGN TO APPROPRIATE FEED LOCATION
     r.inFeatureList = list(dfs[0].columns)
     r.inFeatureCount = dfs[0].shape[-1]
@@ -144,77 +114,43 @@ def PrepData(r:ModelResult, dfs:list):
     # Based on the config and the list of features, determine the feed location for each feature
 
     # inData has 3 separate arrays for 3 separate feed locations
-    # feedLocFeatures is a list of 3 boolean arrays. 
-    # Each array has a bool entry for every column in dfs
-    inDataSeg = [[] for i in range(FeedLoc.LEN)]
+    # feedLocFeatures has a list of column names for each feed location
     feedLocFeatures = [[] for i in range(FeedLoc.LEN)]
 
     # Determine which features go into which feed locations
     for loc in range(FeedLoc.LEN):
         # Find the features that are in this feed location
-        feedLocFeatures[loc] = np.zeros_like(featureList, dtype=bool)
         for fidx, feature in enumerate(featureList):
             for featureMatch in r.config['feedLoc'][loc]:
                 if featureMatch in feature:
-                    feedLocFeatures[loc][fidx] = True
+                    feedLocFeatures[loc].append(feature)
                     break
-
-    # Make the input data
-    for loc in range(FeedLoc.LEN):
-        # Make the input data 3D array for this feed location
-        inDataSeg[loc] = np.zeros((r.segmentCount, r.timestepsPerSegment, np.sum(feedLocFeatures[loc])))
-        for s, df in enumerate(dfsSeg):
-            inDataSeg[loc][s] = np.array(df.iloc[:,feedLocFeatures[loc]])
 
     r.feedLocFeatures = feedLocFeatures
 
 
     # CALC OUTPUT DATA
-    outData = FE.CalcFavScores(r.config, prices)
-    r.outFeatureCount = outData[0].shape[-1]
+    outColumns = FE.CalcFavScores(r.config, dfs)
+    r.outColumns = outColumns
+    r.outFeatureCount = len(outColumns)
 
-    #Scale output values to a reasonable range
-    #17/12/2017: dividing by 90th percentile was found to be a good scale for SGD
-    outDataNp = np.concatenate(outData)
-    for i in np.arange(r.outFeatureCount):
-        pct90 = np.percentile(np.abs(outDataNp[:,i]), 90)
-        outData = [arr / pct90 for arr in outData]
+    return
 
-    # Scale the input data
-    if r.config['inScale'] != 1.:
-        inDataSeg = [arr * r.config['inScale'] for arr in inDataSeg]
-
-    # Scale the output data
-    if r.config['outScale'] != 1.:
-        outData = [arr * r.config['outScale'] for arr in outData]
-
-    # SPLIT THE OUTPUT DATA AND PRICES INTO SEGMENTS
-    outDataSeg = np.zeros((r.segmentCount, r.timestepsPerSegment, r.outFeatureCount))
-    pricesSeg = np.zeros((r.segmentCount, r.timestepsPerSegment))
-    seg = 0
-    for d in range(len(outData)):
-        segmentCount = len(outData[d])//r.timestepsPerSegment
-        for i in range(segmentCount):
-            outDataSeg[seg,:,:] = outData[d][startIdx[i]:endIdx[i],:]
-            pricesSeg[seg,:] = prices[d][startIdx[i]:endIdx[i]]
-            seg += 1       
-
-    return dfs, inDataSeg, outDataSeg, prices, outData, pricesSeg, segNames
 
 # ******************************************************************************
-def PlotInOutData(r, dfs, outData, prices):
+def PlotInOutData(r, dfs):
     # Plot a small sample of the input data
     FE.PlotInData(r, dfs, 0, 2000)
 
     # Print info about in & out data:
     print("The input feed locations for the features are:")
     for loc in range(FeedLoc.LEN):
-        print(f"Feed location '{FeedLoc.NAMES[loc]}': {list(dfs[0].columns[r.feedLocFeatures[loc]])}")
+        print(f"Feed location '{FeedLoc.NAMES[loc]}': {r.feedLocFeatures[loc]}")
 
     # Print data ranges
-    FE.PrintInOutDataRanges(dfs, outData)
+    FE.PrintInOutDataRanges(dfs)
 
-    FE.PlotOutData(r, prices, outData, 0)
+    FE.PlotOutData(r, dfs, 0)
 
     print(f'Input data (samples={r.sampleCount}, maxTimesteps={r.timestepsPerCoin})')
 
@@ -257,6 +193,10 @@ if 1:
     importlib.reload(Config_CC)
     from Config_CC import GetConfig
 
+    import FeatureExtraction
+    importlib.reload(FeatureExtraction)
+    import FeatureExtraction as FE
+
 
 # Set the seed for repeatable results (careful with this use)
 if False:
@@ -270,35 +210,34 @@ r = ModelResult()
 r.config = GetConfig()
 
 
-r.config['epochs'] = 10
+r.config['epochs'] = 100
 r.config['revertToBest'] = False
 
-
 dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours'], allow_partial=True) # a list of data frames
-dfs, inDataSeg, outDataSeg, prices, outData, pricesSeg, segNames = PrepData(r, dfs)
+CalcInOutData(r, dfs)
 
-PlotInOutData(r, dfs, outData, prices)
+PlotInOutData(r, dfs)
 
 r.isBatch = False
 r.batchRunName = ''
 
-prunedNetwork = False # Pruned: generate multiple candidates and use the best
+prunedNetwork = True # Pruned: generate multiple candidates and use the best
 
 if not prunedNetwork:
     NeuralNet.MakeNetwork(r)
     NeuralNet.PrintNetwork(r)
-    NeuralNet.TrainNetwork(r, inDataSeg, outDataSeg)
+    NeuralNet.TrainNetwork(r, dfs)
 else:
-    NeuralNet.MakeAndTrainPrunedNetwork(r, inDataSeg, outDataSeg)
+    NeuralNet.MakeAndTrainPrunedNetwork(r, dfs)
 
-NeuralNet.TestNetwork(r, pricesSeg, inDataSeg, outDataSeg, segNames)
+NeuralNet.TestNetwork(r, dfs)
 
 printmd('### Make & train DONE')
 
 def ContinueTraining(toEpochCount):
     # This is how one would continue training, if desired
     r.config['epochs'] = toEpochCount
-    NeuralNet.TrainNetwork(r, inDataSeg, outDataSeg)
+    NeuralNet.TrainNetwork(r, dfs)
 
 
 # ****************************************************************************************************************
@@ -378,13 +317,13 @@ for idx2, val2 in enumerate(bat2Val):
         # *****************************
         
         dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours'], verbose=0) # a list of data frames
-        dfs, inDataSeg, outData, prices, outDataSeg = PrepData(r, dfs)
+        CalcInOutData(r, dfs)
         
         NeuralNet.MakeNetwork(r)
-        NeuralNet.TrainNetwork(r, inData, outData, plotMetrics=False)
+        NeuralNet.TrainNetwork(r, dfs, plotMetrics=False)
 
         #NeuralNet.MakeAndTrainPrunedNetwork(r, inData, outData, drawPlots=False, candidates = 3, trialEpochs = 16)
-        NeuralNet.TestNetwork(r, prices, inData, outData, drawPlots=False)
+        NeuralNet.TestNetwork(r, dfs, drawPlots=False)
 
         trialCount += 1
 
@@ -692,7 +631,7 @@ class MyHyperModel(kt.HyperModel):
 
 
         dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours'], verbose=0) # a list of data frames
-        self.dfs, self.inData, outData, self.prices, self.outData = PrepData(r, dfs)
+        CalcInOutData(r, dfs)
         NeuralNet.MakeNetwork(r)
         self.histData.latestConfig = r.config
         return r.model
@@ -910,9 +849,9 @@ r = ModelResult()
 r.config = histData.allHist[best_trial_idx]['config']
 
 dfs = dataLoader.GetHourlyDf(r.config['coinList'], r.config['numHours'], verbose=0) # a list of data frames
-dfs, inDataSeg, outData, prices, outDataSeg = PrepData(r, dfs)
+CalcInOutData(r, dfs)
 NeuralNet.MakeNetwork(r)
-NeuralNet.PrepTrainNetwork(r, inData, outData)
+NeuralNet.PrepTrainNetwork(r, dfs)
 best_trial_step = tuner.oracle.get_trial(best_trial_id).best_step # Note that this DOESN'T MATCH with best_epoch. Not sure why keras tuner operates like this
 r.model.load_weights(tuner._get_checkpoint_fname(best_trial_id, best_trial_step))
 #r.model = tuner.load_model(tuner.oracle.get_trial(best_trial_id)) # Alternative
@@ -920,10 +859,10 @@ r.model.load_weights(tuner._get_checkpoint_fname(best_trial_id, best_trial_step)
 r.trainHistory = histData.allHist[best_trial_idx]['history']
 r.modelEpoch = df.loc[best_trial_idx, 'best_epoch']
 # NeuralNet.PlotTrainMetrics(r.trainHistory, plotWidth=r.config['plotWidth'])
-NeuralNet.TestNetwork(r, prices, inData, outData)
+NeuralNet.TestNetwork(r, dfs)
 
 if 0: # Retrain the network. 
     NeuralNet.MakeNetwork(r)
     #NeuralNet.PrintNetwork(r)
-    NeuralNet.TrainNetwork(r, inData, outData)
+    NeuralNet.TrainNetwork(r, dfs)
 # %%

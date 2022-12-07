@@ -62,34 +62,33 @@ def PlotInData(r, dfs, sample=0, tRange=2000, colPatterns=[]):
     ax.legend(handles = lines)
     ax.set_title('Input Data for: {}'.format(r.config['coinList'][sample]))
     ax.grid()
-    #plt.show()
+    plt.show()
 
 #==========================================================================
-def PlotOutData(r, prices, output, sample=0, tRange=0):
+def PlotOutData(r, dfs:list, sample=0, tRange=0):
     # Plot output
+    df = dfs[sample]
     if type(tRange) == int:
-        tInd = range(r.timestepsPerCoin)
+        tInd = range(len(df['close']))
     else:
         tInd = range(tRange[0], tRange[1])
-    r
-    outDim = r.outFeatureCount
     x = tInd
     fig, (ax1, ax2) = plt.subplots(2, sharex=True, figsize=(r.config['plotWidth'] , 7))
     fig.tight_layout()
-    ax1.plot(x,prices[sample][tInd])
-    ax1.set_title('Price of {}'.format(r.config['coinList'][sample]))
+    ax1.plot(x, df['close'].iloc[tInd])
+    ax1.set_title(f'Price of {df.name}')
     ax1.grid()
-    lines = list(range(outDim))
-    for i in range(outDim):
-        lines[i], = ax2.plot(x,output[sample][tInd,i], label='Out{0}({1})'.format(i, r.config['outputRanges'][i]))
+    lines = list(range(r.outFeatureCount))
+    for i, oc in enumerate(r.outColumns):
+        lines[i], = ax2.plot(x, df[oc].iloc[tInd], label=oc)
     l0, = ax2.plot([x[0], x[-1]], [0, 0]) # Add line @ zero
     ax2.legend(handles = lines)
-    ax2.set_title('Output for: {}'.format(r.config['coinList'][sample]))
+    ax2.set_title(f'Output for: {df.name}')
     ax2.grid()
     plt.show()
 
 #==========================================================================
-def PrintInOutDataRanges(dfs, outData):
+def PrintInOutDataRanges(dfs):
     # Print a table. Each column is a feature, each row is a sample
     quantiles = [0.90, 0.10]
     values = []
@@ -104,43 +103,43 @@ def PrintInOutDataRanges(dfs, outData):
 
         dfq = pd.DataFrame(series)
 
-        outFeatures = outData[0].shape[-1]
-
-        odq = np.zeros((len(outData), outFeatures))
-        for i,od in enumerate(outData):
-            odq[i,:] = np.percentile(od, q*100., axis=-2)
-
-        for j in range(outFeatures):
-            dfq[f'out_{j}'] = odq[:,j]
-
         dfq.name = q
         values.append(dfq)
         printmd(f'\nIn + Out data **{q:.2f} quantile**')
         print(dfq)
 
 #==========================================================================
-def CalcFavScores(config, prices):
+def CalcFavScores(config, dfs):
     """
     prices is a list of 1D np arrays
     out is a list of 2D np arrays of shape (timesteps, numPeriods)
     The number of periods is defined by the length of config['outputRanges']
     Can use different periods to output short, medium and long term scores
     """
-    # If it's just a single set of prices, put it in a list
-    if type(prices) != list:
-        prices = [prices]
-            
+
     score_ranges = config['outputRanges']
-    out_dim = len(score_ranges)
 
-    out = [np.zeros([len(p), out_dim], dtype=float) for p in prices]
+    outColumns = []
     for i, sRange in enumerate(score_ranges):
-        for coinIdx, price in enumerate(prices):
-            out[coinIdx][:,i] = CalcFavourabilityScore(config, price, sRange)
+        for df in dfs:
+            name = f"out_{i}"
+            if name not in outColumns: outColumns.append(name)
+            df[name] = CalcFavourabilityScore(config, df['close'], sRange)
     
-    out = FavourabilityScoreOutputTransform(config, out)
+    FavourabilityScoreOutputTransform(config, dfs, outColumns)
 
-    return out
+    #Scale output values to a reasonable range
+    #17/12/2017: dividing by 90th percentile was found to be a good scale for SGD
+    outAllCoins = np.concatenate([np.array(df[outColumns]) for df in dfs], axis=0)
+
+    for oc in outColumns:
+        # Calculate percentile over all coins together, but over each output column separately
+        outAllCoins = np.concatenate([np.array(df[oc]) for df in dfs])
+        pct90 = np.percentile(np.abs(outAllCoins), 90) # scalar
+        for df in dfs:
+            df[oc] = df[oc] / pct90
+
+    return outColumns
 
     
 #==============================================================================
@@ -273,10 +272,10 @@ def CalcFavourabilityScore(config, price, t_range):
 
 
 #==============================================================================
-def FavourabilityScoreOutputTransform(config, scores):
+def FavourabilityScoreOutputTransform(config, dfs:list, outColumns:list):
     """
-    Apply an output transform (if config says so)
-    scores is a list of numpy arrays of shape (timesteps, score_range)
+    Apply an output transform (if config says so) to all outColumns within each
+    df of dfs
     """
 
     if config['binarise']:
@@ -286,14 +285,14 @@ def FavourabilityScoreOutputTransform(config, scores):
         # =1.0 gives a big reduction of outliers
         # =5.0 is pretty much binary
 
-        # Calculate median over all coins together, but over each score range separately
-        allScoresArray = np.concatenate(scores)
-
-        for i in range(allScoresArray.shape[-1]):
-            median = np.median(np.abs(allScoresArray[:,i]))
+        
+        for oc in outColumns:
+            # Calculate median over all coins together, but over each output column separately
+            outAllCoins = np.concatenate([np.array(df[oc]) for df in dfs])
+            median = np.median(np.abs(outAllCoins))
             mult = median / config['binarise']
-            for score in scores:
-                score[:,i] = np.tanh(score[:,i]/mult) * mult
+            for df in dfs:
+                df[oc] = np.tanh(df[oc]/mult) * mult
         
     elif config['ternarise']:
         # Transform towards  buy/sell/neutral test
@@ -302,21 +301,20 @@ def FavourabilityScoreOutputTransform(config, scores):
         # 1-3 seems preferable
         # selectivity 1=frequent buy/sell signals. 3=very picky buy/sell
 
-        # Calculate median over all coins together, but over each score range separately
-        allScoresArray = np.concatenate(scores)
-
-        for i in range(allScoresArray.shape[-1]):
-            scoreAllCoins = allScoresArray[:,i]
-            median = np.median(scoreAllCoins[scoreAllCoins > 0]) # scalar
-            for score in scores:
-                score[score > 0] = (np.tanh((score[score > 0]/median-config['selectivity'])*config['ternarise']) + 1) * median
+        for oc in outColumns:
+            # Calculate median over all coins together, but over each output column separately
+            outAllCoins = np.concatenate([np.array(df[oc]) for df in dfs])
+            median = np.median(outAllCoins[outAllCoins > 0]) # scalar
+            for df in dfs:
+                dfoc = df[oc]
+                dfoc[dfoc > 0] = (np.tanh((dfoc[dfoc > 0]/median-config['selectivity'])*config['ternarise']) + 1) * median
             
-            scoreAllCoins = allScoresArray[:,i]
-            median = np.median(scoreAllCoins[scoreAllCoins < 0]) # scalar
-            for score in scores:
-                score[score < 0] = (np.tanh((score[score < 0]/median-config['selectivity'])*config['ternarise']) + 1) * median
+            median = np.median(outAllCoins[outAllCoins < 0]) # scalar
+            for df in dfs:
+                dfoc = df[oc]
+                dfoc[dfoc < 0] = (np.tanh((dfoc[dfoc < 0]/median-config['selectivity'])*config['ternarise']) + 1) * median
 
-    return scores
+    return
 
 #==========================================================================
 def ScaleData(dfs, cols, quantile=0.90):
@@ -358,22 +356,17 @@ def ShiftAndScaleCol(col):
     return temp * (1 / temp.abs().quantile(0.90))
 
 #==========================================================================
-def AddVix(r:ModelResult, dfs, prices):
+def AddVix(r:ModelResult, dfs):
     """
     ## VIX
     Add volatility Index to a list of data frames
     """
 
-    # Cheap hack !@#$: convert list prices to single numpy array
-    pricesNp = np.zeros((len(prices), r.timestepsPerCoin))
-    for i, price in enumerate(prices):
-        pricesNp[i, 0:len(price)] = price
-
-    volatility = CalcVolatility(r.config, pricesNp)
-    for i in np.arange(r.sampleCount):
+    for df in dfs:
+        volatility = CalcVolatility(r.config, np.array(df['close']))
         for j in np.arange(volatility.shape[-1]):
             col = 'vix{}'.format(j+1) # Column name
-            dfs[i].loc[:, col] = volatility[i,:len(prices[i]),j]
+            df.loc[:, col] = volatility[0,:,j]
     
     # Volatility Normaliser
     # Scale all by the same amount
@@ -411,8 +404,12 @@ def CalcVolatility(config, prices):
     erraticism of different time periods
     """
     
+    # If prices is only 1D, then add a singleton dimension
+    if prices.ndim == 1:
+        prices = np.expand_dims(prices, axis=0)
+
     # Absolute Erraticism Score
-    samples = len(prices)
+    samples = prices.shape[0]
     timesteps = prices.shape[-1]
     
     # Comparative Erraticism
@@ -425,7 +422,7 @@ def CalcVolatility(config, prices):
     if numPeriods == 0:
         return volatility
 
-    # Legacy periods (as of 2022-01-10)
+    # Legacy periods (replaced from 2022-01-10)
     # periodStartsB4Today, periodLengths = MakeExpSpacedPeriods(numPeriods, maxDaysPast, firstPeriodLen)
     # # Make all periods extend up to the present time
     # # This means the periods overlap
@@ -564,7 +561,7 @@ def ScaleVolume(dfs):
     # Make a new volume column, which is scaled
     # Each volume series is scaled independently
     for df in dfs:
-        df.volNom = df.volume_nom / df.volume_nom.quantile(0.9)
+        df['volNom'] = df.volume_nom / df.volume_nom.quantile(0.9)
 
 #==============================================================================
 def PrepHighLowData(dfs):

@@ -20,7 +20,7 @@ import time
 import os
 #from ClockworkRNN import CWRNN
 
-from DataTypes import printmd, SecToHMS, FeedLoc
+from DataTypes import printmd, SecToHMS, FeedLoc, ModelResult
 from Config_CC import GetConfig, PrintConfigString
 
 #==========================================================================
@@ -239,7 +239,7 @@ setattr(tf.compat.v1.nn.rnn_cell.BasicLSTMCell, '__deepcopy__', lambda self, _: 
 setattr(tf.compat.v1.nn.rnn_cell.MultiRNNCell, '__deepcopy__', lambda self, _: self)
 
 
-#==========================================================================
+#===============================================================================
 # Functions to rearrange data to perform 1 fit call
 def timeStepsToDim1X(data):
     """ Reshapes the data: copies the time steps as extra rows in the first dim
@@ -266,6 +266,86 @@ def Dim1ToTimeSteps(data, samples):
     for i in range(timeSteps):
         out[:, i, :] = data[i*samples:(i+1)*samples, :]
     return out
+
+
+#===============================================================================
+def SegmentInOutData(r:ModelResult, dfs:list, stepsPerSeg=None):
+    """SegmentInOutData formats the in + out data for the network, which includes
+    splitting each series into multiple segments (potentially).
+    Input data (dfs) can have series of different lengths. Output segments will
+    all be uniform length.
+
+    Args:
+        r (ModelResult): r
+        dfs (list): all coins, including input and output data
+        stepsPerSeg (_type_, optional): _description_. Defaults to None.
+
+    Returns:
+        (inDataSeg, outDataSeg, pricesSeg, segNames): _description_
+    """
+    # SEGMENTING THE DATA INTO SEGMENTS OF EQUAL TIME
+    # For input into the network
+
+    # CALCULATE SEGMENT INDICES
+
+    if stepsPerSeg is None:
+        stepsPerSeg = r.config['segmentHours']
+    
+    
+    totalTimesteps = 0
+    totalDiscardedTimesteps = 0
+    def CalcSegmentIndices(maxT, stepsPerSeg):
+        startIdx = []
+        endIdx = []
+        t = -stepsPerSeg
+        while -t <= maxT:
+            startIdx.append(t)
+            endIdx.append(t+stepsPerSeg if t+stepsPerSeg < 0 else None)
+            t -= stepsPerSeg
+        return startIdx, endIdx
+
+    # SPLIT DATAFRAMES INTO SEGMENTS
+    dfsSeg = [] # dataframes where all have the same timesteps
+    maxSteps = max([len(df) for df in dfs])
+    startIdx, endIdx = CalcSegmentIndices(maxSteps, stepsPerSeg)
+    segNames = []
+    for df in dfs:
+        thisSegCount = len(df)//stepsPerSeg
+        for i in range(thisSegCount):
+            segNames.append(f"{df.name}_{i}")
+            dfsSeg.append(df.iloc[startIdx[i]:endIdx[i]])
+
+        totalTimesteps += len(df)
+        totalDiscardedTimesteps += (len(df) - thisSegCount * stepsPerSeg)
+        # Partial data segments are discarded. TODO improve this
+    segCount = len(dfsSeg)
+    print(f"Split {len(dfs)} data series into {len(dfsSeg)} segments of max {stepsPerSeg} steps. {totalDiscardedTimesteps/totalTimesteps*100:.2f}% of data discarded.")
+
+    # MAKE THE SEGMENTED INPUT DATA
+    inDataSeg = [[] for i in range(FeedLoc.LEN)]
+    for loc in range(FeedLoc.LEN):
+        # Make the input data 3D array for this feed location
+        inDataSeg[loc] = np.zeros((segCount, stepsPerSeg, len(r.feedLocFeatures[loc])))
+        for seg, df in enumerate(dfsSeg):
+            inDataSeg[loc][seg] = np.array(df[r.feedLocFeatures[loc]])
+    
+    # MAKE THE SEGMENTED OUTPUT DATA
+    outDataSeg = np.zeros((segCount, stepsPerSeg, r.outFeatureCount))
+    pricesSeg = np.zeros((segCount, stepsPerSeg))
+    for seg, df in enumerate(dfsSeg):
+        outDataSeg[seg,:,:] = df[r.outColumns].iloc[startIdx[i]:endIdx[i]]
+        pricesSeg[seg,:] = df['close'].iloc[startIdx[i]:endIdx[i]]
+
+    # Scale the input data
+    if r.config['inScale'] != 1.:
+        inDataSeg *= r.config['inScale']
+
+    # Scale the output data
+    if r.config['outScale'] != 1.:
+        outDataSeg *= r.config['outScale']
+
+    return inDataSeg, outDataSeg, pricesSeg, segNames
+
 
 #==========================================================================
 # SPLIT UP THE DATA
@@ -511,9 +591,9 @@ def MakeNetwork(r):
     
     # Keras functional API
     # Input feeds (applied at different locations)
-    feeds[FeedLoc.conv] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.conv])), name='conv_feed')
-    feeds[FeedLoc.rnn] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.rnn])), name='rnn_feed')
-    feeds[FeedLoc.dense] = layers.Input(shape=(None, np.sum(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
+    feeds[FeedLoc.conv] = layers.Input(shape=(None, len(r.feedLocFeatures[FeedLoc.conv])), name='conv_feed')
+    feeds[FeedLoc.rnn] = layers.Input(shape=(None, len(r.feedLocFeatures[FeedLoc.rnn])), name='rnn_feed')
+    feeds[FeedLoc.dense] = layers.Input(shape=(None, len(r.feedLocFeatures[FeedLoc.dense])), name='dense_feed')
     feed_lens = [feeds[i].shape[-1] for i in range(FeedLoc.LEN)]
 
     # SYSTEM 1 : convolution
@@ -610,9 +690,11 @@ def PrintNetwork(r):
     return
 
 #==========================================================================
-def PrepTrainNetwork(r, inData, outData) -> dict :
+def PrepTrainNetwork(r, dfs:list) -> dict :
+    inData, outData, _, segNames = SegmentInOutData(r, dfs, r.config['segmentHours'])
+
     # Generate validation data
-    r.tInd = _CalcIndices(r.timestepsPerSegment, r.config['dataRatios'], r.config['excludeRecentSteps'])
+    r.tInd = _CalcIndices(r.config['segmentHours'], r.config['dataRatios'], r.config['excludeRecentSteps'])
 
     verbose = 1 if r.isBatch else 2
     
@@ -657,7 +739,7 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
         'y':trainY,
         'epochs':r.config['epochs'],
         'validation_data':(valX, valY),
-        'batch_size':r.segmentCount,
+        'batch_size':len(segNames),
         'shuffle':True,
         'verbose':0,
         'callbacks':callbacks,
@@ -669,14 +751,14 @@ def PrepTrainNetwork(r, inData, outData) -> dict :
 
 
 #==========================================================================
-def TrainNetwork(r, inData, outData, final=True, plotMetrics=True):
+def TrainNetwork(r, dfs, final=True, plotMetrics=True):
     """
     final == True indicates that this is the final call for TrainNetwork for
     this model.
     """
 
     # Pre-fit tasks
-    fitArgs, checkpointCb, printoutCb = PrepTrainNetwork(r, inData, outData)
+    fitArgs, checkpointCb, printoutCb = PrepTrainNetwork(r, dfs)
     
     # FIT
     start = time.time()
@@ -724,7 +806,7 @@ def MakeAndTrainNetwork(r, inData, outData):
 
 #==========================================================================
 # Make several networks and choose the best
-def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 16, drawPlots=True):
+def MakeAndTrainPrunedNetwork(r, dfs:list, candidates = 5, trialEpochs = 16, drawPlots=True):
 
     # Create all models
     models = [0] * candidates
@@ -750,7 +832,7 @@ def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 
         printmd(f'Training candidate model **{i}** out of {candidates}')
         r.model = models[i]
         r.modelEpoch = -1
-        TrainNetwork(r, inData, outData, final=False, plotMetrics=False)
+        TrainNetwork(r, dfs, final=False, plotMetrics=False)
         trainHist[i] = r.trainHistory
 
         fitnessTrain[i] = r.trainHistory['fitness'][-1]
@@ -799,19 +881,22 @@ def MakeAndTrainPrunedNetwork(r, inData, outData, candidates = 5, trialEpochs = 
     r.config['epochs'] = epochBackup
     r.model = models[bestI]
     r.trainHistory = trainHist[bestI]
-    TrainNetwork(r, inData, outData, plotMetrics=drawPlots)
+    TrainNetwork(r, dfs, plotMetrics=drawPlots)
     return
     
 #==========================================================================
-def TestNetwork(r, priceData, inData, outData, segNames:list, drawPlots=1):
-    tPlot = np.r_[0:r.timestepsPerSegment] # Range of output plot (all data)
+def TestNetwork(r, dfs, drawPlots=1):
+    stepsPerSeg = r.config['segmentHours'] # min([max(len(df)) for df in dfs])
+    inDataSeg, outDataSeg, pricesSeg, segNames = SegmentInOutData(r, dfs, stepsPerSeg)
+
+    tPlot = np.r_[0:stepsPerSeg] # Range of output plot (all data)
     if (r.config['dataRatios'][2] > 0.1):
         print('WARNING! TestNetwork uses Val Data as the test data, but Test Data also exists. ')
         print(r.config['dataRatios'])
     testI = r.tInd['val'] # Validation indices used as test
     
     #Predictions (entire input data range)
-    predictY = r.model.predict(inData, batch_size=r.segmentCount)
+    predictY = r.model.predict(inDataSeg, batch_size=len(segNames))
     
     def _PlotOutput(priceData, out, predict, tRange, seg):
         """Plot a single output feature of 1 segment"""
@@ -821,7 +906,7 @@ def TestNetwork(r, priceData, inData, outData, segNames:list, drawPlots=1):
         
         ax = axs[0]
         ax.figure = fig # required to avoid an exception
-        ax.semilogy(tRange, priceData[seg][tRange]) # Daily data
+        ax.semilogy(tRange, priceData[seg,tRange]) # Daily data
         ax.set_title('Prices. Segment {} ({}) [{}]'.format(segNames[seg], seg, r.batchRunName))
         ax.grid()
         
@@ -854,16 +939,16 @@ def TestNetwork(r, priceData, inData, outData, segNames:list, drawPlots=1):
     # Plot prediction
 
     if drawPlots: # drawPlots=1 means plot one segment. drawPlots=True means plot all segments.
-        for s in range(r.segmentCount):
-            _PlotOutput(priceData, outData, predictY, tPlot, s)
+        for s,_ in enumerate(segNames):
+            _PlotOutput(pricesSeg, outDataSeg, predictY, tPlot, s)
             if type(drawPlots) is int:
                 break # Just plot the first segment. Otherwise it'd be too spammy
     
-    r.testAbsErr = np.sum(np.abs(predictY[:,testI,:] - outData[:,testI,:])) / predictY[:,testI,:].size
-    r.neutralTestAbsErr = np.sum(np.abs(outData[:,testI,:])) / outData[:,testI,:].size
+    r.testAbsErr = np.sum(np.abs(predictY[:,testI,:] - outDataSeg[:,testI,:])) / predictY[:,testI,:].size
+    r.neutralTestAbsErr = np.sum(np.abs(outDataSeg[:,testI,:])) / outDataSeg[:,testI,:].size
     r.testScore = r.neutralTestAbsErr / r.testAbsErr
     
-    r.trainAbsErr = np.sum(np.abs(predictY[:,r.tInd['train'],:] - outData[:,r.tInd['train'],:])) / predictY[:,r.tInd['train'],:].size
+    r.trainAbsErr = np.sum(np.abs(predictY[:,r.tInd['train'],:] - outDataSeg[:,r.tInd['train'],:])) / predictY[:,r.tInd['train'],:].size
     r.trainScore = r.neutralTrainAbsErr / r.trainAbsErr
     
     # Assess the level of movement (some networks don't train and the result
