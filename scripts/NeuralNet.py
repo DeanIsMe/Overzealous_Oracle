@@ -319,7 +319,7 @@ def SegmentInOutData(r:ModelResult, dfs:list, stepsPerSeg=None):
         totalDiscardedTimesteps += (len(df) - thisSegCount * stepsPerSeg)
         # Partial data segments are discarded. TODO improve this
     segCount = len(dfsSeg)
-    print(f"Split {len(dfs)} data series into {len(dfsSeg)} segments of max {stepsPerSeg} steps. {totalDiscardedTimesteps/totalTimesteps*100:.2f}% of data discarded.")
+    print(f"Split {len(dfs)} data series into {len(dfsSeg)} segments of {stepsPerSeg} steps. {totalDiscardedTimesteps/totalTimesteps*100:.2f}% of data discarded.")
 
     # MAKE THE SEGMENTED INPUT DATA
     inDataSeg = [[] for i in range(FeedLoc.LEN)]
@@ -333,8 +333,8 @@ def SegmentInOutData(r:ModelResult, dfs:list, stepsPerSeg=None):
     outDataSeg = np.zeros((segCount, stepsPerSeg, r.outFeatureCount))
     pricesSeg = np.zeros((segCount, stepsPerSeg))
     for seg, df in enumerate(dfsSeg):
-        outDataSeg[seg,:,:] = df[r.outColumns].iloc[startIdx[i]:endIdx[i]]
-        pricesSeg[seg,:] = df['close'].iloc[startIdx[i]:endIdx[i]]
+        outDataSeg[seg,:,:] = df[r.outColumns]
+        pricesSeg[seg,:] = df['close']
 
     # Scale the input data
     if r.config['inScale'] != 1.:
