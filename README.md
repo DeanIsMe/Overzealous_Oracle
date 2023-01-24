@@ -18,8 +18,9 @@ Explores:
 
 This repo is primarily a personal project so it's as clean or user friendly as it would otherwise be. 
 
-The [configuration file](/scripts/Config_CC.py) gives an idea of the broad capabilities of the system.
+The [configuration file](/scripts/Config_CC.py) gives an idea of the broad capabilities of the system.  
 
+See the [example output](/ExampleOutput.pdf) for a rough idea of what is printed for a single test.
 
 ### Installing
 I use venv.
@@ -31,3 +32,6 @@ python3 -m pip install -r requirements.txt
 
 Run [Main_CC.py](/scripts/Main_CC.py) in Jupyter. Using VSCode.  
 I obtained crypto market historical data from Kraken. See the function ReadKrakenCsv in [Crypto_GetData.py](/scripts/Crypto_GetData.py).
+
+
+Dean Reading
